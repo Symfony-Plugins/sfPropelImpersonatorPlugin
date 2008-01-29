@@ -1,0 +1,145 @@
+= sfPropelImpersonatorPlugin =
+
+== Overview ==
+
+sfPropelImpersonatorPlugin is full magic. It will remove all your bad thought about propel,
+to make you think about anything is doable with it. If you ever found a limitation to propel,
+maybe it could be worth reading this page.
+
+This plugin is currently in alpha stage. Testing is inexistent, and only official working
+DBMS is MySQL, even if it could be working with other too
+
+Development is very early, and what's missing here will come, but time is a rare good. If
+you want to give me a hand, I'll be glad to help you about it. And you have any suggestions,
+don't hesitate.
+
+We'll fight the pain out of propel!
+
+== Install ==
+
+To check it out:
+
+{{{
+svn co http://svn.symfony-project.com/plugins/sfPropelImpersonatorPlugin/tags/0.1alpha
+}}}
+
+To use it as an external:
+{{{
+svn propedit svn:externals plugins
+
+sfPropelImpersonatorPlugin http://svn.symfony-project.com/plugins/sfPropelImpersonatorPlugin/tags/0.1alpha
+}}}
+
+== Contents ==
+
+The plugin is divided into 3 major classes, each one impersonating a little part
+of the Propel ORM library.
+
+=== sfPropelCriteriaImpersonator ===
+
+This class is used to work around the Creole/PropelUtil limitations and let us
+retrieve the applicaple prepared SQL of a Criteria object. This is a static class
+and its only usage is the following:
+
+{{{
+$sql = sfPropelCriteriaImpersonator::getSql($criteria);
+}}}
+
+This may seem useless, but it then can be used to make criteria based subqueries
+in a Criteria::CUSTOM clause:
+
+{{{
+$mainCriteria = new Criteria();
+/* ... criteria population ... */
+$subCriteria = new Criteria();
+/* ... sub criteria population ... */
+$mainCriteria->add(MyPeer::MY_COLUMN, MyPeer::MY_COLUMN.' IN ('.sfPropelCriteriaImpersonator::getSql($subCriteria).')', Criteria::CUSTOM);
+}}}
+
+Please just keep in mind that it should not be used blindly, but only in cases you'd really
+need a subquery from a SQL point of view.
+
+Current limitations: For now, only use this with MySQL database, as creole does not permit
+flexible extension of its PreparedStatements.
+
+=== sfPropelObjectImpersonator ===
+
+This class impersonates the propel Object layer, i.e your object model class. It can be used
+to populate fake propel objects, that an admin generator, symfony 1.0 helpers or anything
+using propel objects can use transparently.
+
+The peer impersonator uses it to populate custom columns objects.
+
+=== sfPropelObjectPeerImpersonator ===
+
+Here is the heart of action. sfPropelObjectPeerImpersonator instances, that we'll call peer
+instances, are objects that will allow you to run ->doSelect(Criteria, connection) queries
+or custom queries. It will populate objects that may be composed of propel objects, custom
+columns lists, or both mixed, and link them using the DatabaseMap provided by propel schema.
+
+==== ->doSelect() usage ====
+
+{{{
+$peer = new sfPropelObjectPeerImpersonator(...result schema...);
+$c = new Criteria();
+$peer->addSelectColumns($c);
+... criteria filling ...
+$results = $peer->doSelect($c);
+}}}
+
+==== ->setQuery() and ->doQuery() usage ====
+
+{{{
+$peer = new sfPropelObjectPeerImpersonator(...result schema...);
+$peer->setQuery($sql);
+$result = $peer->doQuery(...parameters schema...);
+}}}
+
+==== What's a result schema? ====
+
+Result schema is a list of parameters that may be:
+
+* a Propel object class name (i.e 'Article')
+* a custom field in the form: array('creole_type', 'column_name_for_object_population')
+
+Of course, you can mix both, but links will be present between objects if and only if
+Database map shows direct relations between objects. More, relations to self are not
+handled at this time.
+
+==== What's a parameters schema? ====
+
+Parameters schema is a list of values used to replace prepared '?' in the queries, in
+the form: array('creole_type', 'parameter_value')
+
+Thoose parameters are recursive, so you can also mix with array('creole_type', array(...list of values))
+or even array(...parameters schema...). Tryed to be flexible...
+
+==== Example ====
+
+{{{
+$peer = new sfPropelObjectPeerImpersonator('Article', 'Author', 'AuthorI18n', 'ArticleComment');
+
+$c = new Criteria();
+$c->addJoin(ArticlePeer::ID, ArticleCommentPeer::ARTICLE_ID, Criteria::LEFT_JOIN);
+$c->addJoin(ArticlePeer::AUTHOR_ID, AuthorPeer::ID, Criteria::INNER_JOIN);
+$c->addJoin(AuthorPeer::ID, AuthorI18nPeer::AUTHOR_ID.' AND '.AuthorI18nPeer::CULTURE.'=\''.mysql_real_escape_string($culture).'\'', Criteria::INNER_JOIN);
+$c->add(AuthorPeer::VALIDATION_STATUS, true);
+
+$results = $peer->doSelect($c);
+}}}
+
+== License ==
+
+For the full copyright and license information, please view the LICENSE
+file that was distributed with this source code.
+
+== Changelog ==
+
+=== 2008-01-30 ===
+
+ * initial sfPropelImpersonatorPlugin import
+
+== Maintainers ==
+
+ * Romain Dorgueil <romain.dorgueil@sensio.com>
+
