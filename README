@@ -99,8 +99,8 @@ $result = $peer->doQuery(...parameters schema...);
 
 Result schema is a list of parameters that may be:
 
-* a Propel object class name (i.e 'Article')
-* a custom field in the form: array('creole_type', 'column_name_for_object_population')
+ - a Propel object class name (i.e 'Article')
+ - a custom field in the form: array('creole_type', 'column_name_for_object_population')
 
 Of course, you can mix both, but links will be present between objects if and only if
 Database map shows direct relations between objects. More, relations to self are not
@@ -120,6 +120,7 @@ or even array(...parameters schema...). Tryed to be flexible...
 $peer = new sfPropelObjectPeerImpersonator('Article', 'Author', 'AuthorI18n', 'ArticleComment');
 
 $c = new Criteria();
+$peer->addSelectColumns($c);
 $c->addJoin(ArticlePeer::ID, ArticleCommentPeer::ARTICLE_ID, Criteria::LEFT_JOIN);
 $c->addJoin(ArticlePeer::AUTHOR_ID, AuthorPeer::ID, Criteria::INNER_JOIN);
 $c->addJoin(AuthorPeer::ID, AuthorI18nPeer::AUTHOR_ID.' AND '.AuthorI18nPeer::CULTURE.'=\''.mysql_real_escape_string($culture).'\'', Criteria::INNER_JOIN);
