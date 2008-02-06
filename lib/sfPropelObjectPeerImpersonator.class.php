@@ -17,6 +17,9 @@
  */
 class sfPropelObjectPeerImpersonator
 {
+  const DEBUG = false;
+  const DEBUG_POPULATE = false;
+
   /**
    * Relation type constants
    */
@@ -278,27 +281,60 @@ class sfPropelObjectPeerImpersonator
   {
     $this->initializeRelations();
 
+    if (self::DEBUG && self::DEBUG_POPULATE)
+    {
+      $debugRelations = array();
+
+      foreach ($this->relations as $from => $fromData)
+      {
+        $fromClass = get_class($this->objects[$from]);
+
+        $debugRelations[$fromClass] = array();
+        foreach ($fromData as $to => $relationsData)
+        {
+          $toClass = get_class($this->objects[$to]);
+
+          $debugRelations[$fromClass][$toClass] = $relationsData;
+        }
+      }
+
+      echo '<script>console.dir('.json_encode(array('sfPropelObjectPeerImpersonator'=>$debugRelations)).');</script>';
+      echo '<pre>';
+    }
+
     $result = array();
     $allObjects = array();
 
     // for each record....
     while ($resultset->next())
     {
+      if (self::DEBUG && self::DEBUG_POPULATE)
+      {
+        echo '-------------------- fetch a record --------------------'."\n";
+      }
+
       $startcol = 1;
       $rowObjects = array();
 
       // for each subcomponent we have to hydrate in each record....
       foreach ($this->objects as $index => $object)
       {
+        if (self::DEBUG && self::DEBUG_POPULATE)
+        {
+          echo '<b>'.get_class($object).'</b>'."\n";
+        }
+
         $rowObjects[$index] = clone $object;
         $startcol = $rowObjects[$index]->hydrate($resultset, $startcol);
 
         // if the object was only made of null values, we consider it's inconsistent and forget it.
-        if (!$this->testConsistence($rowObjects[$index]->getPrimaryKey()))
+/*        if (!$this->testConsistence($rowObjects[$index]->getPrimaryKey()))
         {
           unset($rowObjects[$index]);
           continue;
         }
+        for now, let's say we keep it
+        */
 
         // initialize our object directory
         if (!isset($allObjects[$index]))
@@ -329,29 +365,44 @@ class sfPropelObjectPeerImpersonator
 
         // If we're not in our "main" object context but in a sub-object, we're going to
         // fetch the available relations.
-        if ($index&&$isNewObject)
+        if ($index/*&&$isNewObject*/)
         {
           foreach ($this->getRelationsFor($index) as $relation)
           {
+            $currentObject = $rowObjects[$index];
+
             switch ($relation['type'])
             {
               /**
                * RELATION_REVERSE
                */
               case self::RELATION_REVERSE:
-                if ($isNewObject)
+                if (self::DEBUG && self::DEBUG_POPULATE)
                 {
-                  $rowObjects[$index]->{'init'.$relation['classFrom'].'s'}();
+                  echo '  <u>REVERSE</u>: '.$relation['classFrom'].' <-- '.$relation['classTo']."\n";
                 }
 
-                $rowObjects[$index]->{'add'.$relation['classFrom']}($rowObjects[$this->getIndexByClass($relation['classFrom'])]);
-                $rowObjects[$this->getIndexByClass($relation['classFrom'])]->{'set'.$relation['classTo']}($rowObjects[$index]);
+                $foreignClass = $relation['classFrom'];
+                $foreignObject = $rowObjects[$this->getIndexByClass($foreignClass)];
+
+                if ($isNewObject)
+                {
+                  $currentObject->{'init'.$foreignClass.'s'}();
+                }
+
+                $currentObject->{'add'.$foreignClass}($foreignObject);
+                $foreignObject->{'set'.$relation['classTo']}($currentObject);
                 break;
 
-              /**
-               * RELATION_I18N
-               */
+                /**
+                 * RELATION_I18N
+                 */
               case self::RELATION_I18N:
+                if (self::DEBUG && self::DEBUG_POPULATE)
+                {
+                  echo '  <u>I18N</u>: '.$relation['classTo'].' <-- '.$relation['classFrom']."\n";
+                }
+
                 if (null !== ($classToIndex = $this->getIndexByClass($relation['classTo'])))
                 {
                   $foreignObject =& $rowObjects[$classToIndex];
@@ -361,13 +412,19 @@ class sfPropelObjectPeerImpersonator
                 }
                 break;
 
-              /**
-               * RELATION_NORMAL
-               */
+                /**
+                 * RELATION_NORMAL
+                 */
               case self::RELATION_NORMAL:
+                if (self::DEBUG && self::DEBUG_POPULATE)
+                {
+                  echo '  <u>NORMAL</u>: '.$relation['classFrom'].' --> '.$relation['classTo']."\n";
+                }
+
+
                 if (null !== ($classToIndex = $this->getIndexByClass($relation['classTo'])))
                 {
-                  $foreignObject =& $rowObjects[$classToIndex];
+                  $foreignObject = $rowObjects[$classToIndex];
 
                   // local *---- foreign (local object has one foreign object)
                   $rowObjects[$index]->{'set'.str_replace('Id','',$relation['local'])}($foreignObject);
@@ -390,6 +447,11 @@ class sfPropelObjectPeerImpersonator
           $result[] =& $rowObjects[0];
         }
       }
+    }
+
+    if (self::DEBUG && self::DEBUG_POPULATE)
+    {
+      echo '</pre>';
     }
 
     return $result;
