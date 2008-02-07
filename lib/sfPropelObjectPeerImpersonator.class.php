@@ -162,7 +162,7 @@ class sfPropelObjectPeerImpersonator
                     $this->relations[$iFrom][$iTo] = array(
                         'type'         => self::RELATION_I18N,
                         'classTo'      => $_class_to,
-                        'classFrom'      => $_class_from,
+                        'classFrom'    => $_class_from,
                         'local'        => $c->getPhpName(),
                         'distant'      => $c->getRelatedTableName(),
                         );
@@ -393,6 +393,8 @@ class sfPropelObjectPeerImpersonator
         // fetch the available relations.
         if ($index/*&&$isNewObject*/)
         {
+          $linkedRelationsCounter = 0;
+
           foreach ($this->getRelationsFor($index) as $relation)
           {
             $currentObject = $rowObjects[$index];
@@ -423,6 +425,8 @@ class sfPropelObjectPeerImpersonator
 
                 $currentObject->{'add'.$foreignClass}($foreignObject);
                 $foreignObject->{'set'.$relation['classTo']}($currentObject);
+
+                $linkedRelationsCounter++;
                 break;
 
                 /**
@@ -447,6 +451,7 @@ class sfPropelObjectPeerImpersonator
                   $i18nObject->{'set'.$relation['classTo']}($object);
                   $object->{'set'.$relation['classTo'].'I18nForCulture'}($i18nObject, $this->getCulture());
 
+                  $linkedRelationsCounter++;
                 }
                 break;
 
@@ -476,7 +481,13 @@ class sfPropelObjectPeerImpersonator
 
                   $foreignObject->{'init'.$relation['classFrom'].'s'}($rowObjects[$index]);
                   $foreignObject->{'add'.$relation['classFrom']}($rowObjects[$index]);
+
+                  $linkedRelationsCounter++;
                 }
+                break;
+
+              case self::RELATION_SELF:
+                throw new sfException('Self relations not yet implemented');
                 break;
             }
 
@@ -484,6 +495,13 @@ class sfPropelObjectPeerImpersonator
             {
               echo "\n";
             }
+          }
+
+          if (!$linkedRelationsCounter)
+          {
+            // this should not happen. An object which is not our main object has not been linked to any other
+            // fetched object.
+            throw new sfException('Orphan object fetched of type '.get_class($rowObjects[$index]));
           }
         }
 
