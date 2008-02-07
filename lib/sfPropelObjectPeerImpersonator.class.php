@@ -38,7 +38,8 @@ class sfPropelObjectPeerImpersonator
     $objects,
     $classToIndex,
     $relations,
-    $currentIndex;
+    $currentIndex,
+    $culture = null;
 
   /**
    * Constructor
@@ -274,6 +275,26 @@ class sfPropelObjectPeerImpersonator
     }
   }
 
+  public function setCulture($culture)
+  {
+    $this->culture = mysql_real_escape_string($culture);
+  }
+
+  public function getCulture()
+  {
+    if (null === $this->culture)
+    {
+      $this->setCulture(sfContext::getInstance()->getUser()->getCulture());
+    }
+
+    return $this->culture;
+  }
+
+  public function getJoinForCulture($class, $idField)
+  {
+    return constant($class.'::'.$idField).' AND '.constant($class.'::CULTURE').'=\''.$this->getCulture().'\'';
+  }
+
   /**
    * Object population
    */
@@ -298,7 +319,7 @@ class sfPropelObjectPeerImpersonator
         }
       }
 
-      echo '<script>console.dir('.json_encode(array('sfPropelObjectPeerImpersonator'=>$debugRelations)).');</script>';
+      echo '<script>console.dir('.json_encode(array('Propel Impersonator Debug'=>$debugRelations)).');</script>';
       echo '<pre>';
     }
 
@@ -334,6 +355,11 @@ class sfPropelObjectPeerImpersonator
           continue;
         }
         for now, let's say we keep it
+
+          reason is: if we dont populate an empty propel object, propel will think we don't know it does not exists, and
+          will fetch it again from database.
+
+          maybe this could be implemented with a minimal NULL object (ok i know it looks like Doctrine_Null)
         */
 
         // initialize our object directory
@@ -379,7 +405,7 @@ class sfPropelObjectPeerImpersonator
               case self::RELATION_REVERSE:
                 if (self::DEBUG && self::DEBUG_POPULATE)
                 {
-                  echo '  <u>REVERSE</u>: '.$relation['classFrom'].' <-- '.$relation['classTo']."\n";
+                  echo '  <u>REVERSE</u>: '.$relation['classFrom'].' <-- '.$relation['classTo'];
                 }
 
                 $foreignClass = $relation['classFrom'];
@@ -387,6 +413,11 @@ class sfPropelObjectPeerImpersonator
 
                 if ($isNewObject)
                 {
+                  if (self::DEBUG && self::DEBUG_POPULATE)
+                  {
+                    echo ' (new)';
+                  }
+
                   $currentObject->{'init'.$foreignClass.'s'}();
                 }
 
@@ -400,15 +431,22 @@ class sfPropelObjectPeerImpersonator
               case self::RELATION_I18N:
                 if (self::DEBUG && self::DEBUG_POPULATE)
                 {
-                  echo '  <u>I18N</u>: '.$relation['classTo'].' <-- '.$relation['classFrom']."\n";
+                  echo '  <u>I18N</u>: '.$relation['classTo'].' <-- '.$relation['classFrom'];
                 }
 
-                if (null !== ($classToIndex = $this->getIndexByClass($relation['classTo'])))
+                if (null !== ($objectIndex = $this->getIndexByClass($relation['classTo'])))
                 {
-                  $foreignObject =& $rowObjects[$classToIndex];
+                  if (self::DEBUG && self::DEBUG_POPULATE)
+                  {
+                    echo ' (exists)';
+                  }
 
-                  $rowObjects[$index]->{'set'.$relation['classTo']}($foreignObject);
-                  $foreignObject->{'set'.$relation['classTo'].'I18nForCulture'}($rowObjects[$index], $rowObjects[$index]->getCulture());
+                  $object = $rowObjects[$objectIndex];
+                  $i18nObject = $rowObjects[$index];
+
+                  $i18nObject->{'set'.$relation['classTo']}($object);
+                  $object->{'set'.$relation['classTo'].'I18nForCulture'}($i18nObject, $this->getCulture());
+
                 }
                 break;
 
@@ -418,12 +456,15 @@ class sfPropelObjectPeerImpersonator
               case self::RELATION_NORMAL:
                 if (self::DEBUG && self::DEBUG_POPULATE)
                 {
-                  echo '  <u>NORMAL</u>: '.$relation['classFrom'].' --> '.$relation['classTo']."\n";
+                  echo '  <u>NORMAL</u>: '.$relation['classFrom'].' --> '.$relation['classTo'];
                 }
-
 
                 if (null !== ($classToIndex = $this->getIndexByClass($relation['classTo'])))
                 {
+                  if (self::DEBUG && self::DEBUG_POPULATE)
+                  {
+                    echo ' (exists)';
+                  }
                   $foreignObject = $rowObjects[$classToIndex];
 
                   // local *---- foreign (local object has one foreign object)
@@ -437,6 +478,11 @@ class sfPropelObjectPeerImpersonator
                   $foreignObject->{'add'.$relation['classFrom']}($rowObjects[$index]);
                 }
                 break;
+            }
+
+            if (self::DEBUG && self::DEBUG_POPULATE)
+            {
+              echo "\n";
             }
           }
         }
