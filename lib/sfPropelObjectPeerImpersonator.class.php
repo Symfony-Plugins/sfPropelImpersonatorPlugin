@@ -37,6 +37,7 @@ class sfPropelObjectPeerImpersonator
     $connection,
     $objects,
     $objectsParameters,
+    $objectsStartColumns,
     $classToIndex,
     $relations,
     $currentIndex,
@@ -291,7 +292,12 @@ class sfPropelObjectPeerImpersonator
 
     return $this->culture;
   }
-
+/*
+  public function getJoinExtension($field, $field2, $linkOperator, $comparisonOperator)
+  {
+    return ' '.$linkOperator.' ('.$field.' '.$comparisonOperator.' '.$field2.') ';
+  }
+*/
   public function getJoinForCulture($class, $idField)
   {
     return constant($class.'::'.$idField).' AND '.constant($class.'::CULTURE').'=\''.$this->getCulture().'\'';
@@ -303,6 +309,7 @@ class sfPropelObjectPeerImpersonator
   public function populateObjects(ResultSet $resultset)
   {
     $this->initializeRelations();
+    $this->objectsStartColumns = array();
 
     if (self::DEBUG && self::DEBUG_POPULATE)
     {
@@ -395,122 +402,131 @@ class sfPropelObjectPeerImpersonator
         // fetch the available relations.
         if ($index/*&&$isNewObject*/)
         {
-          $linkedRelationsCounter = 0;
-
-          foreach ($this->getRelationsFor($index) as $relation)
+          // normal relation fetching (ie Propel BaseObjcet children)
+          if (get_class($this->objects[$index])!='sfPropelObjectImpersonator')
           {
-            $currentObject = $rowObjects[$index];
+            $linkedRelationsCounter = 0;
 
-            switch ($relation['type'])
+            foreach ($this->getRelationsFor($index) as $relation)
             {
-              /**
-               * RELATION_REVERSE
-               */
-              case self::RELATION_REVERSE:
-                if (self::DEBUG && self::DEBUG_POPULATE)
-                {
-                  echo '  <u>REVERSE</u>: '.$relation['classFrom'].' <-- '.$relation['classTo'];
-                }
+              $currentObject = $rowObjects[$index];
 
-                $foreignClass = $relation['classFrom'];
-                $foreignObject = $rowObjects[$this->getIndexByClass($foreignClass)];
-                $relatedBy = (null === ($_relatedBy=$this->getParameter($index, 'related_by')))?'':'RelatedBy'.sfInflector::camelize($_relatedBy);
-
-                if ($isNewObject)
-                {
-                  if (self::DEBUG && self::DEBUG_POPULATE)
-                  {
-                    echo ' (new)';
-                  }
-
-
-                  $currentObject->{'init'.$foreignClass.'s'.$relatedBy}();
-                }
-
-                $currentObject->{'add'.$foreignClass.$relatedBy}($foreignObject);
-                $foreignObject->{'set'.$relation['classTo'].$relatedBy}($currentObject);
-
-                $linkedRelationsCounter++;
-                break;
-
+              switch ($relation['type'])
+              {
                 /**
-                 * RELATION_I18N
+                 * RELATION_REVERSE
                  */
-              case self::RELATION_I18N:
-                if (self::DEBUG && self::DEBUG_POPULATE)
-                {
-                  echo '  <u>I18N</u>: '.$relation['classTo'].' <-- '.$relation['classFrom'];
-                }
-
-                if (null !== ($objectIndex = $this->getIndexByClass($relation['classTo'])))
-                {
+                case self::RELATION_REVERSE:
                   if (self::DEBUG && self::DEBUG_POPULATE)
                   {
-                    echo ' (exists)';
+                    echo '  <u>REVERSE</u>: '.$relation['classFrom'].' <-- '.$relation['classTo'];
                   }
 
-                  $object = $rowObjects[$objectIndex];
-                  $i18nObject = $rowObjects[$index];
+                  $foreignClass = $relation['classFrom'];
+                  $foreignObject = $rowObjects[$this->getIndexByClass($foreignClass)];
+                  $relatedBy = (null === ($_relatedBy=$this->getParameter($index, 'related_by')))?'':'RelatedBy'.sfInflector::camelize($_relatedBy);
 
-                  $i18nObject->{'set'.$relation['classTo']}($object);
-                  $object->{'set'.$relation['classTo'].'I18nForCulture'}($i18nObject, $this->getCulture());
+                  if ($isNewObject)
+                  {
+                    if (self::DEBUG && self::DEBUG_POPULATE)
+                    {
+                      echo ' (new)';
+                    }
+
+
+                    $currentObject->{'init'.$foreignClass.'s'.$relatedBy}();
+                  }
+
+                  $currentObject->{'add'.$foreignClass.$relatedBy}($foreignObject);
+                  $foreignObject->{'set'.$relation['classTo'].$relatedBy}($currentObject);
 
                   $linkedRelationsCounter++;
-                }
-                break;
+                  break;
 
-                /**
-                 * RELATION_NORMAL
-                 */
-              case self::RELATION_NORMAL:
-                if (self::DEBUG && self::DEBUG_POPULATE)
-                {
-                  echo '  <u>NORMAL</u>: '.$relation['classFrom'].' --> '.$relation['classTo'];
-                }
-
-                if (null !== ($classToIndex = $this->getIndexByClass($relation['classTo'])))
-                {
+                  /**
+                   * RELATION_I18N
+                   */
+                case self::RELATION_I18N:
                   if (self::DEBUG && self::DEBUG_POPULATE)
                   {
-                    echo ' (exists)';
+                    echo '  <u>I18N</u>: '.$relation['classTo'].' <-- '.$relation['classFrom'];
                   }
-                  $foreignObject = $rowObjects[$classToIndex];
 
-                  $relatedBy = (null === ($_relatedBy=$this->getParameter($classToIndex, 'related_by')))?'':'RelatedBy'.sfInflector::camelize($_relatedBy);
-                  // @todo: bug correction, this does not work if related_by is used this way, it tries to call setFieldRelatedByFieldId
-                  // instead of setClassNameRelatedByFieldId, and sometimes (depending on order) it uses the wrong Field, as second one
-                  // override first one in relations
+                  if (null !== ($objectIndex = $this->getIndexByClass($relation['classTo'])))
+                  {
+                    if (self::DEBUG && self::DEBUG_POPULATE)
+                    {
+                      echo ' (exists)';
+                    }
 
-                  // local *---- foreign (local object has one foreign object)
-                  $rowObjects[$index]->{'set'.str_replace('Id','',$relation['local']).$relatedBy}($foreignObject);
+                    $object = $rowObjects[$objectIndex];
+                    $i18nObject = $rowObjects[$index];
 
-                  // foreign ----* local (foreign object has many local objects)
-                  // we have to check if there are already other objects, or if this is the first.
-                  // @todo: find a way not to call initXxxXxxs() on every passes, but only on first addition for each object.
+                    $i18nObject->{'set'.$relation['classTo']}($object);
+                    $object->{'set'.$relation['classTo'].'I18nForCulture'}($i18nObject, $this->getCulture());
 
-                  $foreignObject->{'init'.$relation['classFrom'].'s'.$relatedBy}($rowObjects[$index]);
-                  $foreignObject->{'add'.$relation['classFrom'].$relatedBy}($rowObjects[$index]);
+                    $linkedRelationsCounter++;
+                  }
+                  break;
 
-                  $linkedRelationsCounter++;
-                }
-                break;
+                  /**
+                   * RELATION_NORMAL
+                   */
+                case self::RELATION_NORMAL:
+                  if (self::DEBUG && self::DEBUG_POPULATE)
+                  {
+                    echo '  <u>NORMAL</u>: '.$relation['classFrom'].' --> '.$relation['classTo'];
+                  }
 
-              case self::RELATION_SELF:
-                throw new sfException('Self relations not yet implemented');
-                break;
+                  if (null !== ($classToIndex = $this->getIndexByClass($relation['classTo'])))
+                  {
+                    if (self::DEBUG && self::DEBUG_POPULATE)
+                    {
+                      echo ' (exists)';
+                    }
+                    $foreignObject = $rowObjects[$classToIndex];
+
+                    $relatedBy = (null === ($_relatedBy=$this->getParameter($classToIndex, 'related_by')))?'':'RelatedBy'.sfInflector::camelize($_relatedBy);
+                    // @todo: bug correction, this does not work if related_by is used this way, it tries to call setFieldRelatedByFieldId
+                    // instead of setClassNameRelatedByFieldId, and sometimes (depending on order) it uses the wrong Field, as second one
+                    // override first one in relations
+
+                    // local *---- foreign (local object has one foreign object)
+                    $rowObjects[$index]->{'set'.str_replace('Id','',$relation['local']).$relatedBy}($foreignObject);
+
+                    // foreign ----* local (foreign object has many local objects)
+                    // we have to check if there are already other objects, or if this is the first.
+                    // @todo: find a way not to call initXxxXxxs() on every passes, but only on first addition for each object.
+
+                    $foreignObject->{'init'.$relation['classFrom'].'s'.$relatedBy}($rowObjects[$index]);
+                    $foreignObject->{'add'.$relation['classFrom'].$relatedBy}($rowObjects[$index]);
+
+                    $linkedRelationsCounter++;
+                  }
+                  break;
+
+                case self::RELATION_SELF:
+                  throw new sfException('Self relations not yet implemented');
+                  break;
+              }
+
+              if (self::DEBUG && self::DEBUG_POPULATE)
+              {
+                echo "\n";
+              }
             }
 
-            if (self::DEBUG && self::DEBUG_POPULATE)
+            if (!$linkedRelationsCounter)
             {
-              echo "\n";
+              // this should not happen. An object which is not our main object has not been linked to any other
+              // fetched object.
+              throw new sfException('Orphan object fetched of type '.get_class($rowObjects[$index]));
             }
           }
-
-          if (!$linkedRelationsCounter)
+          else
           {
-            // this should not happen. An object which is not our main object has not been linked to any other
-            // fetched object.
-            throw new sfException('Orphan object fetched of type '.get_class($rowObjects[$index]));
+            assert($index-1>=0);
+            $rowObject[$index-1]->extra = $rowObject[$index];
           }
         }
 
