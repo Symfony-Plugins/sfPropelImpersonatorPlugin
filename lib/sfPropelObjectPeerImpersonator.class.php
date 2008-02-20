@@ -36,6 +36,7 @@ class sfPropelObjectPeerImpersonator
     $query,
     $connection,
     $objects,
+    $objectsParameters,
     $classToIndex,
     $relations,
     $currentIndex,
@@ -54,6 +55,7 @@ class sfPropelObjectPeerImpersonator
   {
     $args = func_get_args();
     $this->objects = array();
+    $this->objectsParameters = array();
 
     if (count($args))
     {
@@ -348,13 +350,13 @@ class sfPropelObjectPeerImpersonator
         $rowObjects[$index] = clone $object;
         $startcol = $rowObjects[$index]->hydrate($resultset, $startcol);
 
-        // if the object was only made of null values, we consider it's inconsistent and forget it.
-/*        if (!$this->testConsistence($rowObjects[$index]->getPrimaryKey()))
+       /* // if the object was only made of null values, we consider it's inconsistent and forget it.
+        if (!$this->testConsistence($rowObjects[$index]->getPrimaryKey()))
         {
           unset($rowObjects[$index]);
           continue;
         }
-        for now, let's say we keep it
+       /* for now, let's say we keep it
 
           reason is: if we dont populate an empty propel object, propel will think we don't know it does not exists, and
           will fetch it again from database.
@@ -412,6 +414,7 @@ class sfPropelObjectPeerImpersonator
 
                 $foreignClass = $relation['classFrom'];
                 $foreignObject = $rowObjects[$this->getIndexByClass($foreignClass)];
+                $relatedBy = (null === ($_relatedBy=$this->getParameter($index, 'related_by')))?'':'RelatedBy'.sfInflector::camelize($_relatedBy);
 
                 if ($isNewObject)
                 {
@@ -420,11 +423,12 @@ class sfPropelObjectPeerImpersonator
                     echo ' (new)';
                   }
 
-                  $currentObject->{'init'.$foreignClass.'s'}();
+
+                  $currentObject->{'init'.$foreignClass.'s'.$relatedBy}();
                 }
 
-                $currentObject->{'add'.$foreignClass}($foreignObject);
-                $foreignObject->{'set'.$relation['classTo']}($currentObject);
+                $currentObject->{'add'.$foreignClass.$relatedBy}($foreignObject);
+                $foreignObject->{'set'.$relation['classTo'].$relatedBy}($currentObject);
 
                 $linkedRelationsCounter++;
                 break;
@@ -472,15 +476,20 @@ class sfPropelObjectPeerImpersonator
                   }
                   $foreignObject = $rowObjects[$classToIndex];
 
+                  $relatedBy = (null === ($_relatedBy=$this->getParameter($classToIndex, 'related_by')))?'':'RelatedBy'.sfInflector::camelize($_relatedBy);
+                  // @todo: bug correction, this does not work if related_by is used this way, it tries to call setFieldRelatedByFieldId
+                  // instead of setClassNameRelatedByFieldId, and sometimes (depending on order) it uses the wrong Field, as second one
+                  // override first one in relations
+
                   // local *---- foreign (local object has one foreign object)
-                  $rowObjects[$index]->{'set'.str_replace('Id','',$relation['local'])}($foreignObject);
+                  $rowObjects[$index]->{'set'.str_replace('Id','',$relation['local']).$relatedBy}($foreignObject);
 
                   // foreign ----* local (foreign object has many local objects)
                   // we have to check if there are already other objects, or if this is the first.
                   // @todo: find a way not to call initXxxXxxs() on every passes, but only on first addition for each object.
 
-                  $foreignObject->{'init'.$relation['classFrom'].'s'}($rowObjects[$index]);
-                  $foreignObject->{'add'.$relation['classFrom']}($rowObjects[$index]);
+                  $foreignObject->{'init'.$relation['classFrom'].'s'.$relatedBy}($rowObjects[$index]);
+                  $foreignObject->{'add'.$relation['classFrom'].$relatedBy}($rowObjects[$index]);
 
                   $linkedRelationsCounter++;
                 }
@@ -526,6 +535,7 @@ class sfPropelObjectPeerImpersonator
    * left/right join (or equivalent) was null or not.
    *
    * @param mixed $key
+   *
    * @return boolean
    */
   protected function testConsistence($key)
@@ -553,23 +563,107 @@ class sfPropelObjectPeerImpersonator
   }
 
   /**
+   * Merge a new parameters set with existing one for object indexed by $objectIndex
+   *
+   * @param integer $objectIndex
+   * @param array   $parameters
+   */
+  protected function setParameters($objectIndex, array $parameters)
+  {
+    if (!isset($this->objectsParameters[$objectIndex]))
+    {
+      $this->objectsParameters[$objectIndex] = array();
+    }
+
+    $this->objectsParameters[$objectIndex] = array_merge($this->objectsParameters[$objectIndex], $parameters);
+  }
+
+  /**
+   * Retrieve a parameter for an object
+   *
+   * @param mixed  $objectIndexOrName
+   * @param string $parameterName
+   * @param mixed  $defaultValue
+   *
+   * @return mixed
+   */
+  public function getParameter($objectIndexOrName, $parameterName, $defaultValue=null)
+  {
+    if (!is_numeric($objectIndexOrName))
+    {
+      $objectIndexOrName = $this->getIndexByClass($objectIndexOrName);
+    }
+
+    if (null===$objectIndexOrName || !isset($this->objects[$objectIndexOrName]))
+    {
+      throw new Exception('Tried to retrievea parameter for an unknown object name or index.');
+    }
+
+    if (!isset($this->objectsParameters[$objectIndexOrName]) || !isset($this->objectsParameters[$objectIndexOrName][$parameterName]))
+    {
+      return $defaultValue;
+    }
+    else
+    {
+      return $this->objectsParameters[$objectIndexOrName][$parameterName];
+    }
+  }
+
+  /**
    * Adds an object instance to the current objects array
    */
-  protected function addObject($instance)
+  protected function addObject($instance, $parameters=null)
   {
     $this->objects[] = $instance;
+
+    if (null!==$parameters)
+    {
+      $this->setParameters(count($this->objects)-1, $parameters);
+    }
   }
 
 
   protected function addObjectByClassName($className)
   {
+    // find whether or not we have parameters set for this object
+    if (false!==strpos($className, ' '))
+    {
+      // separate classname from parameters
+      $_parameters = explode(' ', $className);
+      $className = array_shift($_parameters);
+
+      // transform parameters into useable array
+      $_parameters = array_map(create_function('$v', 'return explode(\'=\', $v);'), $_parameters);
+      $parameters = array();
+
+      foreach ($_parameters as $parameter)
+      {
+        if (count($parameter)==2)
+        {
+          $parameters[$parameter[0]] = $parameter[1];
+        }
+        else
+        {
+          throw new Exception('Invalid parameter given');
+        }
+      }
+    }
+
+    // add object
     if (class_exists($className, true))
     {
-      $this->addObject(new $className());
+      if (isset($parameters))
+      {
+        $this->addObject(new $className(), $parameters);
+      }
+      else
+      {
+        $this->addObject(new $className());
+      }
     }
     else
     {
-      throw new Exception('sfPropelObjectPeerImpersonator::initialize: Unknown object class given "'.$className.'"');
+      throw new Exception('sfPropelObjectPeerImpersonator::initialize(): Unknown object class given "'.$className.'"');
     }
   }
 
