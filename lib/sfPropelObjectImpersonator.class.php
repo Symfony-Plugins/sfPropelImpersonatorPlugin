@@ -16,6 +16,14 @@ class sfPropelObjectImpersonator
 
   public function __construct($columns)
   {
+    foreach($columns as $index=>$column)
+    {
+      if (count($column) == 2)
+      {
+        $columns[$index][2] = trim(strtolower(preg_replace('/[^a-z]/i', '_', $column[1])), '_');
+      }
+    }
+
     $this->columns = $columns;
   }
 
@@ -30,7 +38,7 @@ class sfPropelObjectImpersonator
     {
       foreach($this->columns as $_array)
       {
-        list($type, $name) = $_array;
+        list($type, $field, $name) = $_array;
         $this->$name = $rs->{'get'.ucfirst($type)}($startcol);
         $startcol++;
       }
@@ -63,9 +71,22 @@ class sfPropelObjectImpersonator
     throw new sfException ('Unknown method called '.__CLASS__.'::'.$method.'()');
   }
 
+  public function addSelectColumns(Criteria &$c)
+  {
+    foreach ($this->columns as $index => $column)
+    {
+      $c->addAsColumn($column[2], $column[1]);
+    }
+  }
+
   public function getPeer()
   {
     return null;
+  }
+
+  public function getColumns()
+  {
+    return $this->columns;
   }
 
   public function __toString()

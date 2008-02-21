@@ -35,9 +35,11 @@ class sfPropelObjectPeerImpersonator
     $objectClass,
     $query,
     $connection,
-    $objects,
-    $objectsParameters,
-    $objectsStartColumns,
+    $objects = array(),
+    $objectsParameters = array(),
+    $objectsStartColumns = array(),
+    $currentStartColumnForPropelObjects = 1,
+    $currentStartColumnForImpersonatedObjects = 0,
     $classToIndex,
     $relations,
     $currentIndex,
@@ -55,8 +57,6 @@ class sfPropelObjectPeerImpersonator
   public function __construct()
   {
     $args = func_get_args();
-    $this->objects = array();
-    $this->objectsParameters = array();
 
     if (count($args))
     {
@@ -108,9 +108,14 @@ class sfPropelObjectPeerImpersonator
   {
     foreach($this->objects as $object)
     {
-      $peer = get_class($object).'Peer';
-
-      call_user_func(array($peer, 'addSelectColumns'), $c);
+      if (self::isPropelObject($object))
+      {
+        call_user_func(array(get_class($object).'Peer', 'addSelectColumns'), $c);
+      }
+      else
+      {
+        $object->addSelectColumns($c);
+      }
     }
   }
 
@@ -309,8 +314,8 @@ class sfPropelObjectPeerImpersonator
   public function populateObjects(ResultSet $resultset)
   {
     $this->initializeRelations();
-    $this->objectsStartColumns = array();
 
+    // debug block
     if (self::DEBUG && self::DEBUG_POPULATE)
     {
       $debugRelations = array();
@@ -343,8 +348,8 @@ class sfPropelObjectPeerImpersonator
         echo '-------------------- fetch a record --------------------'."\n";
       }
 
-      $startcol = 1;
       $rowObjects = array();
+      $currentImpersonatedObjectsStartColumn = 0;
 
       // for each subcomponent we have to hydrate in each record....
       foreach ($this->objects as $index => $object)
@@ -355,7 +360,16 @@ class sfPropelObjectPeerImpersonator
         }
 
         $rowObjects[$index] = clone $object;
-        $startcol = $rowObjects[$index]->hydrate($resultset, $startcol);
+
+        if (self::isPropelObject($object))
+        {
+          $rowObjects[$index]->hydrate($resultset, $this->objectsStartColumns[$index]);
+        }
+        else
+        {
+          $rowObjects[$index]->hydrate($resultset, $this->currentStartColumnForPropelObjects + $currentImpersonatedObjectsStartColumn);
+          $currentImpersonatedObjectsStartColumn += $this->objectsStartColumns[$index];
+        }
 
        /* // if the object was only made of null values, we consider it's inconsistent and forget it.
         if (!$this->testConsistence($rowObjects[$index]->getPrimaryKey()))
@@ -380,7 +394,7 @@ class sfPropelObjectPeerImpersonator
         // check if object is not already referenced in allObjects directory
         $isNewObject = true;
 
-        if (get_class($this->objects[$index])!='sfPropelObjectImpersonator')
+        if (self::isPropelObject($this->objects[$index]))
         {
           foreach ($allObjects[$index] as $otherObject)
           {
@@ -403,7 +417,7 @@ class sfPropelObjectPeerImpersonator
         if ($index/*&&$isNewObject*/)
         {
           // normal relation fetching (ie Propel BaseObjcet children)
-          if (get_class($this->objects[$index])!='sfPropelObjectImpersonator')
+          if (self::isPropelObject($this->objects[$index]))
           {
             $linkedRelationsCounter = 0;
 
@@ -526,7 +540,7 @@ class sfPropelObjectPeerImpersonator
           else
           {
             assert($index-1>=0);
-            $rowObject[$index-1]->extra = $rowObject[$index];
+            $rowObjects[$index-1]->extra = $rowObjects[$index];
           }
         }
 
@@ -625,16 +639,34 @@ class sfPropelObjectPeerImpersonator
     }
   }
 
+  static public function isPropelObject($object)
+  {
+    return $object instanceof BaseObject;
+  }
+
   /**
    * Adds an object instance to the current objects array
    */
   protected function addObject($instance, $parameters=null)
   {
-    $this->objects[] = $instance;
+    $index = count($this->objects);
+
+    $this->objects[$index] = $instance;
+
+    if (self::isPropelObject($instance))
+    {
+      $this->objectsStartColumns[$index] = $this->currentStartColumnForPropelObjects;
+      $this->currentStartColumnForPropelObjects += count($instance->toArray());
+    }
+    else
+    {
+      $this->objectsStartColumns[$index] = $this->currentStartColumnForImpersonatedObjects;
+      $this->currentStartColumnForImpersonatedObjects += count($instance->getColumns());
+    }
 
     if (null!==$parameters)
     {
-      $this->setParameters(count($this->objects)-1, $parameters);
+      $this->setParameters($index, $parameters);
     }
   }
 
@@ -679,7 +711,7 @@ class sfPropelObjectPeerImpersonator
     }
     else
     {
-      throw new Exception('sfPropelObjectPeerImpersonator::initialize(): Unknown object class given "'.$className.'"');
+      throw new Exception(__CLASS__.'::initialize(): Unknown object class given "'.$className.'"');
     }
   }
 
