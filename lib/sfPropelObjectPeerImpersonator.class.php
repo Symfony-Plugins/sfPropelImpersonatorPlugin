@@ -255,6 +255,49 @@ class sfPropelObjectPeerImpersonator
   }
 
   /**
+   * Propel impersonating doCount ^^
+   */
+  public function doCount(Criteria $criteria, $distinct = false, $con=null)
+  {
+    $criteria = clone $criteria;
+    $asColumns = $criteria->getAsColumns();
+    $criteria->clearSelectColumns()->clearOrderByColumns();
+
+    // hack against criteria private policy
+    foreach ($asColumns as $key => $value)
+    {
+      $criteria->addAsColumn($key, $value);
+    }
+
+    $peerClass = get_class($this->objects[0]).'Peer';
+
+    if ($distinct || in_array(Criteria::DISTINCT, $criteria->getSelectModifiers()))
+    {
+      $criteria->addSelectColumn(constant($peerClass.'::COUNT_DISTINCT'));
+    }
+    else
+    {
+      $criteria->addSelectColumn(constant($peerClass.'::COUNT'));
+    }
+
+    foreach($criteria->getGroupByColumns() as $column)
+    {
+      $criteria->addSelectColumn($column);
+    }
+
+    $rs = call_user_func(array($peerClass, 'doSelectRS'), $criteria, $con);
+
+    if ($rs->next())
+    {
+      return $rs->getInt(1);
+    }
+    else
+    {
+      return 0;
+    }
+  }
+
+  /**
    * Custom query select
    */
   public function doQuery()
