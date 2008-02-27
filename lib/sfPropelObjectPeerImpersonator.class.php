@@ -43,7 +43,8 @@ class sfPropelObjectPeerImpersonator
     $classToIndex,
     $relations,
     $currentIndex,
-    $culture = null;
+    $culture = null,
+    $securityFieldCountFlag = true;
 
   /**
    * Constructor
@@ -256,9 +257,9 @@ class sfPropelObjectPeerImpersonator
       echo '<b>QUERY</b> (may not be applicable):'.sfPropelCriteriaImpersonator::getSql($c);
     }
 
-    if (($_acceptable=($this->currentStartColumnForPropelObjects-1)) != ($_got=count($c->getSelectColumns())))
+    if ($this->securityFieldCountFlag && ($_acceptable=($this->currentStartColumnForPropelObjects + $this->currentStartColumnForImpersonatedObjects - 1)) != ($_got = count($c->getSelectColumns())+count($c->getAsColumns())))
     {
-      throw new sfException('The select columns count in given Criteria ('.$_got.') differs from what is acceptable ('.$_acceptable.')');
+      throw new sfException('Criteria selects '.$_got.' fields while the Holy sfPropelImpersonator waits for '.$_acceptable.' fields to populate objects. Exactly. Not more, not less. So '.$_acceptable.' will be the field count your Criteria will ask for. You won\'t give it '.($_acceptable-1).', neither '.($_acceptable+1).', but '.$_acceptable.'.');
     }
 
     return $this->populateObjects(BasePeer::doSelect($c, $con));
@@ -611,6 +612,16 @@ class sfPropelObjectPeerImpersonator
     }
 
     return $result;
+  }
+
+  public function disableSecurityFieldCountFlag()
+  {
+    $this->securityFieldCountFlag = false;
+  }
+
+  public function enableSecurityFieldCountFlag()
+  {
+    $this->securityFieldCountFlag = true;
   }
 
   /**
