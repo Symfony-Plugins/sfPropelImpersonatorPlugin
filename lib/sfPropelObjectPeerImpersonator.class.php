@@ -251,6 +251,16 @@ class sfPropelObjectPeerImpersonator
       $this->setConnection($con);
     }
 
+    if (self::DEBUG)
+    {
+      echo '<b>QUERY</b> (may not be applicable):'.sfPropelCriteriaImpersonator::getSql($c);
+    }
+
+    if (($_acceptable=($this->currentStartColumnForPropelObjects-1)) != ($_got=count($c->getSelectColumns())))
+    {
+      throw new sfException('The select columns count in given Criteria ('.$_got.') differs from what is acceptable ('.$_acceptable.')');
+    }
+
     return $this->populateObjects(BasePeer::doSelect($c, $con));
   }
 
