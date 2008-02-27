@@ -694,6 +694,8 @@ class sfPropelObjectPeerImpersonator
   {
     $index = count($this->objects);
 
+    $instance->populatedByImpersonator = true;
+
     $this->objects[$index] = $instance;
 
     if (self::isPropelObject($instance))
