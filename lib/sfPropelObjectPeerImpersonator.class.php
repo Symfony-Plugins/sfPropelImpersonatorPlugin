@@ -12,12 +12,19 @@
  *
  * @package veolys
  * @subpackage lib
- * @author Romain Dorgueil <romain.dorgueil@sensio.net
+ * @author Romain Dorgueil <romain.dorgueil@sensio.net>
  * @version SVN: $Id$
  */
 class sfPropelObjectPeerImpersonator
 {
+  /**
+   * Set to true to enable basic debugging output
+   */
   const DEBUG = false;
+
+  /**
+   * Set to true to enable advanced object population debugging output
+   */
   const DEBUG_POPULATE = false;
 
   /**
@@ -29,22 +36,41 @@ class sfPropelObjectPeerImpersonator
   const RELATION_SELF    = 4;
 
   /**
-   * Internal properties
+   * Custom SQL query, set by ->setQuery()
    */
+  protected $query;
+
+  /**
+   * Propel connection
+   */
+  protected $connection;
+
+  /**
+   * Prototype instances of objects each row will populate
+   */
+  protected $objects = array();
+
   protected
-    $objectClass,
-    $query,
-    $connection,
-    $objects = array(),
     $objectsParameters = array(),
     $objectsStartColumns = array(),
     $currentStartColumnForPropelObjects = 1,
     $currentStartColumnForImpersonatedObjects = 0,
     $classToIndex,
     $relations,
-    $currentIndex,
-    $culture = null,
-    $securityFieldCountFlag = true;
+    $currentIndex;
+
+  /**
+   * User culture, sued for I18n joins
+   */
+  protected $culture = null;
+
+  /**
+   * Flag forbiding to populate more or less fields than we selected. Prevent populating objects with
+   * values not meant for them, but reduce flexibility.
+   *
+   * Use ->(enable|disable)SecurityFieldCountFlag() to change.
+   */
+  protected $securityFieldCountFlag = true;
 
   /**
    * Constructor
@@ -57,30 +83,74 @@ class sfPropelObjectPeerImpersonator
    */
   public function __construct()
   {
-    $args = func_get_args();
-
-    if (count($args))
+    if (count($args = func_get_args()))
     {
-      $custom_fields = array();
-
-      foreach ($args as $arg)
-      {
-        if (is_array($arg))
-        {
-          array_push($custom_fields, $arg);
-        }
-        else
-        {
-          $this->addCustomObjectIfApplicable($custom_fields);
-          $this->addObjectByClassName($arg);
-        }
-      }
-
-      $this->addCustomObjectIfApplicable($custom_fields);
+      $customFields = array();
+      $this->parseConstructorParameters($args, $customFields, true);
     }
     else
     {
       throw new Exception('No parameters given to constructor, aborting.');
+    }
+  }
+
+  /**
+   * Constructor parameters parser
+   *
+   * Takes a list of strings (shortcut for array('object', 'PropelObjectClassName')), array(type, name) and array(arrays).
+   */
+  protected function parseConstructorParameters($args, &$customFields, $finalize=false)
+  {
+    foreach ($args as $arg)
+    {
+      if (is_array($arg))
+      {
+        // ignore empty arrays
+
+        if (isset($arg[0]))
+        {
+          if (is_array($arg[0]))
+          {
+            // Array of array, recursion
+
+            $this->parseConstructorParameters($arg, $customFields);
+          }
+          elseif ('object'==$arg[0])
+          {
+            // Propel object, long version
+
+            if (!isset($arg[1]))
+            {
+              throw new Exception('Invalid constructor item found: An object must take the object class name as parameter');
+            }
+            else
+            {
+              $this->addCustomObjectIfApplicable($customFields);
+              $this->addObjectByClassName($arg[1]);
+            }
+          }
+          else
+          {
+            // Pure custom field
+
+            array_push($customFields, $arg);
+          }
+        }
+      }
+      else
+      {
+        // Propel object, short version. Will only be applicable on first level, deeper levels must use the
+        // long version (ie array('object', 'PropelObjectClassName'))
+
+        $this->addCustomObjectIfApplicable($customFields);
+        $this->addObjectByClassName($arg);
+      }
+    }
+
+    // If we're in top recursion level, add remaining custom objects if any
+    if ($finalize)
+    {
+      $this->addCustomObjectIfApplicable($customFields);
     }
   }
 
