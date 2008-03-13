@@ -10,11 +10,44 @@
  * admin generation/object helper needs, or any other class provided at construction
  * time.
  *
- * @package veolys
+ * Constructor takes mixed arguments, either strings or arrays, and arrays can be
+ * containing more arrays in the same form, only matters is the order. Thoose arguments
+ * describe what will be populated after a ->doSelect() or ->doQuery() call.
+ *
+ * Strings are a shortcut for array('object', ...), and can take optional parameters,
+ * in the form 'string param1=value1 param2=value2', within the following:
+ *   - related_by:
+ *         use custom method for populating relation, usefull when two classes are
+ *         linked by more than one relation.
+ *   - custom_related_by:
+ *         when using custom sql that returns the same fields as a propel object, you
+ *         can use this to populate a fake relation. for example, if a table materialize
+ *         page views, you could return the same structure with sums, avgs and cie
+ *         replacing the value field. Custom related class will be available through 
+ *         $previousobject->customCamelizedFieldName (property, not method)
+ *   - custom_related_by_reverse:
+ *         If you want to get a relation link back using custom_related_by, specify the
+ *         underscored version of the field making link. sfPopi will call ->setCamelized(...)
+ *         on the customized object.
+ *
+ * To enable fast debugging of whether or not a record fetching problem may have been caused
+ * by the plugin, every object populated by sfPopi is flagged with the property
+ * ->populatedByImpersonator set to true. For more extensive debugging, try changing the
+ * DEBUG and DEBUG_POPULATE constants to true, and use firebug to see relation tree built
+ * using propel introspection methods.
+ *
+ * KNOWN PROBLEMS:
+ *  - don't use propel classes starting with lowercase or not being camelcased. Definately.
+ *    I don't think we can find a workaround for this, propel does not give enough informations
+ *    in introspection classes
+ *  - everything flagged as @todo in this file.
+ *
+ * @package sfPropelImpersonatorPlugin
  * @subpackage lib
- * @author Romain Dorgueil <romain.dorgueil@sensio.net>
+ * @author Romain Dorgueil <romain.dorgueil@sensio.com>
  * @version SVN: $Id$
  */
+
 class sfPropelObjectPeerImpersonator
 {
   /**
@@ -495,18 +528,25 @@ class sfPropelObjectPeerImpersonator
           $currentImpersonatedObjectsStartColumn += $this->objectsStartColumns[$index];
         }
 
-       /* // if the object was only made of null values, we consider it's inconsistent and forget it.
-        if (!$this->testConsistence($rowObjects[$index]->getPrimaryKey()))
-        {
-          unset($rowObjects[$index]);
-          continue;
-        }
-       /* for now, let's say we keep it
+        /*
+
+          @todo think about what we'll do with this.
+
+          if the object was only made of null values, we consider it's inconsistent and forget it:
+
+          if (!$this->testConsistence($rowObjects[$index]->getPrimaryKey()))
+          {
+            unset($rowObjects[$index]);
+            continue;
+          }
+
+          for now, let's say we keep it
 
           reason is: if we dont populate an empty propel object, propel will think we don't know it does not exists, and
           will fetch it again from database.
 
           maybe this could be implemented with a minimal NULL object (ok i know it looks like Doctrine_Null)
+
         */
 
         // initialize our object directory
@@ -531,6 +571,7 @@ class sfPropelObjectPeerImpersonator
           }
         }
 
+        // reference it
         if ($isNewObject)
         {
           $allObjects[$index][] = $rowObjects[$index];
@@ -632,7 +673,7 @@ class sfPropelObjectPeerImpersonator
                       // override first one in relations
 
                       // local *---- foreign (local object has one foreign object)
-                      $rowObjects[$index]->{'set'.str_replace('Id','',$relation['local']).$relatedBy}($foreignObject);
+                      $rowObjects[$index]->{'set'.$relation['classTo'].$relatedBy}($foreignObject);
 
                       // foreign ----* local (foreign object has many local objects)
                       // we have to check if there are already other objects, or if this is the first.
@@ -668,6 +709,7 @@ class sfPropelObjectPeerImpersonator
             else
             {
               assert($index-1>=0);
+
               $rowObjects[$index-1]->extra = $rowObjects[$index];
             }
           }
@@ -675,7 +717,13 @@ class sfPropelObjectPeerImpersonator
           {
             // user specified a relation, ignore propel introspection relations
             assert($index-1>=0);
+
             $rowObjects[$index-1]->{'custom'.sfInflector::camelize($this->getParameter($index, 'custom_related_by'))} = $rowObjects[$index];
+
+            if (strlen($_field=sfInflector::camelize($this->getParameter($index, 'custom_related_by_reverse'))))
+            {
+              $rowObjects[$index]->{'set'.$field}($rowObjects[$index-1]);
+            }
           }
         }
 
