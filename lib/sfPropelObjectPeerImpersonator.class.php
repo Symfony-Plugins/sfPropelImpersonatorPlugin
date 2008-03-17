@@ -89,8 +89,12 @@ class sfPropelObjectPeerImpersonator
     $currentStartColumnForPropelObjects = 1,
     $currentStartColumnForImpersonatedObjects = 0,
     $classToIndex,
-    $relations,
     $currentIndex;
+
+  /**
+   * Relations directory extracted from Propel database map
+   */
+  protected $relations;
 
   /**
    * User culture, sued for I18n joins
@@ -124,66 +128,6 @@ class sfPropelObjectPeerImpersonator
     else
     {
       throw new Exception('No parameters given to constructor, aborting.');
-    }
-  }
-
-  /**
-   * Constructor parameters parser
-   *
-   * Takes a list of strings (shortcut for array('object', 'PropelObjectClassName')), array(type, name) and array(arrays).
-   */
-  protected function parseConstructorParameters($args, &$customFields, $finalize=false)
-  {
-    foreach ($args as $arg)
-    {
-      if (is_array($arg))
-      {
-        // ignore empty arrays
-
-        if (isset($arg[0]))
-        {
-          if (is_array($arg[0]))
-          {
-            // Array of array, recursion
-
-            $this->parseConstructorParameters($arg, $customFields);
-          }
-          elseif ('object'==$arg[0])
-          {
-            // Propel object, long version
-
-            if (!isset($arg[1]))
-            {
-              throw new Exception('Invalid constructor item found: An object must take the object class name as parameter');
-            }
-            else
-            {
-              $this->addCustomObjectIfApplicable($customFields);
-              $this->addObjectByClassName($arg[1]);
-            }
-          }
-          else
-          {
-            // Pure custom field
-
-            array_push($customFields, $arg);
-          }
-        }
-      }
-      else
-      {
-        // Propel object, short version. Will only be applicable on first level, deeper levels must use the
-        // long version (ie array('object', 'PropelObjectClassName'))
-
-        $this->addCustomObjectIfApplicable($customFields);
-        $this->addObjectByClassName($arg);
-      }
-    }
-
-    // If we're in top recursion level, add remaining custom objects if any
-    if ($finalize)
-    {
-      $this->addCustomObjectIfApplicable($customFields);
     }
   }
 
@@ -371,17 +315,9 @@ class sfPropelObjectPeerImpersonator
   /**
    * Propel impersonating doCount ^^
    */
-  public function doCount(Criteria $criteria, $distinct = false, $con=null)
+  public function doCount(Criteria $criteria, $distinct = false, $con=null, $usePeerClassSelectResultSetMethod=true)
   {
-    $criteria = clone $criteria;
-    $asColumns = $criteria->getAsColumns();
-    $criteria->clearSelectColumns()->clearOrderByColumns();
-
-    // hack against criteria private policy
-    foreach ($asColumns as $key => $value)
-    {
-      $criteria->addAsColumn($key, $value);
-    }
+    $criteria = sfPropelCriteriaImpersonator::clearSelectColumns($criteria);
 
     $peerClass = get_class($this->objects[0]).'Peer';
 
@@ -399,7 +335,19 @@ class sfPropelObjectPeerImpersonator
       $criteria->addSelectColumn($column);
     }
 
-    $rs = call_user_func(array($peerClass, 'doSelectRS'), $criteria, $con);
+    if ($usePeerClassSelectResultSetMethod)
+    {
+      // kept for compatibility, but maybe useless. Problem with this is that doSelectRS can modify
+      // criteria, especially because of propel behaviours. That should be ok, but doSelect do not use
+      // it, so you can't use same criteria for both.
+      //
+      // for now, $usePeerClassSelectResultSetMethod is true by default
+      $rs = call_user_func(array($peerClass, 'doSelectRS'), $criteria, $con);
+    }
+    else
+    {
+      $rs = BasePeer::doSelect($criteria, $con);
+    }
 
     if ($rs->next())
     {
@@ -413,8 +361,27 @@ class sfPropelObjectPeerImpersonator
 
   /**
    * Custom query select
+   *
+   * @param mixed
+   * @param mixed
+   *   ...
+   * @param mixed
+   *
+   * @return array
    */
   public function doQuery()
+  {
+    return $this->populateObjects($this->doRawQuery(func_get_args()));
+  }
+
+  /**
+   * Custom query
+   *
+   * @param array $arguments
+   *
+   * @return ResultSet
+   */
+  public function doRawQuery(array $arguments=array())
   {
     if ($this->query)
     {
@@ -426,13 +393,12 @@ class sfPropelObjectPeerImpersonator
       $statement = $this->connection->PrepareStatement($this->query);
       $this->currentIndex = 1;
 
-      foreach(func_get_args() as $argument)
+      foreach($arguments as $argument)
       {
         $this->setPreparedParameter($statement, $argument);
       }
 
-      $resultset = $statement->executeQuery(ResultSet::FETCHMODE_NUM);
-      return $this->populateObjects($resultset);
+      return $statement->executeQuery(ResultSet::FETCHMODE_NUM);
     }
     else
     {
@@ -945,6 +911,66 @@ class sfPropelObjectPeerImpersonator
     else
     {
       return null;
+    }
+  }
+
+  /**
+   * Constructor parameters parser
+   *
+   * Takes a list of strings (shortcut for array('object', 'PropelObjectClassName')), array(type, name) and array(arrays).
+   */
+  protected function parseConstructorParameters($args, &$customFields, $finalize=false)
+  {
+    foreach ($args as $arg)
+    {
+      if (is_array($arg))
+      {
+        // ignore empty arrays
+
+        if (isset($arg[0]))
+        {
+          if (is_array($arg[0]))
+          {
+            // Array of array, recursion
+
+            $this->parseConstructorParameters($arg, $customFields);
+          }
+          elseif ('object'==$arg[0])
+          {
+            // Propel object, long version
+
+            if (!isset($arg[1]))
+            {
+              throw new Exception('Invalid constructor item found: An object must take the object class name as parameter');
+            }
+            else
+            {
+              $this->addCustomObjectIfApplicable($customFields);
+              $this->addObjectByClassName($arg[1]);
+            }
+          }
+          else
+          {
+            // Pure custom field
+
+            array_push($customFields, $arg);
+          }
+        }
+      }
+      else
+      {
+        // Propel object, short version. Will only be applicable on first level, deeper levels must use the
+        // long version (ie array('object', 'PropelObjectClassName'))
+
+        $this->addCustomObjectIfApplicable($customFields);
+        $this->addObjectByClassName($arg);
+      }
+    }
+
+    // If we're in top recursion level, add remaining custom objects if any
+    if ($finalize)
+    {
+      $this->addCustomObjectIfApplicable($customFields);
     }
   }
 }

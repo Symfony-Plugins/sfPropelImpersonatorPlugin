@@ -7,6 +7,29 @@
 class sfPropelCriteriaImpersonator
 {
   /**
+   * Removes select columns not used by a doSelect method (ie every select_columns but
+   * _not_ the AS columns. Criteria::clearSelectColumns clears both.
+   *
+   * @param Criteria $criteria
+   *
+   * @return Criteria
+   */
+  static public function clearSelectColumns(Criteria $criteria)
+  {
+    $criteria = clone $criteria;
+    $asColumns = $criteria->getAsColumns();
+    $criteria->clearSelectColumns()->clearOrderByColumns();
+
+    // hack against criteria private policy
+    foreach ($asColumns as $key => $value)
+    {
+      $criteria->addAsColumn($key, $value);
+    }
+
+    return $criteria;
+  }
+
+  /**
    * Returns an SQL equality using Criteria::IN or Criteria::EQUAL, depending on parameter type (array or int/string)
    *
    * @param &array $parameters
