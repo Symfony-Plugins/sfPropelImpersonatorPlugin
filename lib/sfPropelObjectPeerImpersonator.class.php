@@ -30,12 +30,6 @@
  *         underscored version of the field making link. sfPopi will call ->setCamelized(...)
  *         on the customized object.
  *
- * To enable fast debugging of whether or not a record fetching problem may have been caused
- * by the plugin, every object populated by sfPopi is flagged with the property
- * ->populatedByImpersonator set to true. For more extensive debugging, try changing the
- * DEBUG and DEBUG_POPULATE constants to true, and use firebug to see relation tree built
- * using propel introspection methods.
- *
  * KNOWN PROBLEMS:
  *  - don't use propel classes starting with lowercase or not being camelcased. Definately.
  *    I don't think we can find a workaround for this, propel does not give enough informations
@@ -50,16 +44,6 @@
 
 class sfPropelObjectPeerImpersonator
 {
-  /**
-   * Set to true to enable basic debugging output
-   */
-  const DEBUG = false;
-
-  /**
-   * Set to true to enable advanced object population debugging output
-   */
-  const DEBUG_POPULATE =  false;
-
   /**
    * Relation type constants
    */
@@ -83,8 +67,12 @@ class sfPropelObjectPeerImpersonator
    */
   protected $objects = array();
 
+  /**
+   * Parameter containers for objects
+   */
+  protected $objectsParameters = array();
+
   protected
-    $objectsParameters = array(),
     $objectsStartColumns = array(),
     $currentStartColumnForPropelObjects = 1,
     $currentStartColumnForImpersonatedObjects = 0,
@@ -184,11 +172,10 @@ class sfPropelObjectPeerImpersonator
         {
           if ($c->isForeignKey())
           {
-            $_class_to = sfInflector::camelize($c->getRelatedTableName());
+            $_class_to   = sfInflector::camelize($c->getRelatedTableName());
 
             if ($_class_to != $_class_from)
             {
-              // Normal relations (class a => class b)
               if (null !== ($iTo = $this->getIndexByClass($_class_to)))
               {
                 if ($iTo > $iFrom)
@@ -198,13 +185,7 @@ class sfPropelObjectPeerImpersonator
                     $this->relations[$iTo] = array();
                   }
 
-                  $this->relations[$iTo][$iFrom] = array(
-                      'type'         => self::RELATION_REVERSE,
-                      'classTo'      => $_class_to,
-                      'classFrom'    => $_class_from,
-                      'local'        => $c->getPhpName(),
-                      'distant'      => $c->getRelatedTableName(),
-                      );
+                  $this->relations[$iTo][$iFrom] = new sfPropelImpersonatorManyToOneRelation($iTo, $_class_from, $iFrom, $_class_to, $iTo, $c->getPhpName(), $c->getRelatedTableName(), array('from'=>$this->getParameters($iTo), 'to'=>$this->getParameters($iFrom)));
                 }
                 else
                 {
@@ -213,25 +194,13 @@ class sfPropelObjectPeerImpersonator
                     $this->relations[$iFrom] = array();
                   }
 
-                  if (strpos($_class_from, 'I18n') !== false)
+                  if (substr($_class_from, -4) == 'I18n')
                   {
-                    $this->relations[$iFrom][$iTo] = array(
-                        'type'         => self::RELATION_I18N,
-                        'classTo'      => $_class_to,
-                        'classFrom'    => $_class_from,
-                        'local'        => $c->getPhpName(),
-                        'distant'      => $c->getRelatedTableName(),
-                        );
+                    $this->relations[$iFrom][$iTo] = new sfPropelImpersonatorI18nRelation($iFrom, $_class_from, $iFrom, $_class_to, $iTo, $c->getPhpName(), $c->getRelatedTableName(), array('from'=>$this->getParameters($iFrom), 'to'=>$this->getParameters($iTo)), $this->getCulture());
                   }
                   else
                   {
-                    $this->relations[$iFrom][$iTo] = array(
-                        'type'         => self::RELATION_NORMAL,
-                        'classTo'      => $_class_to, 
-                        'classFrom'    => $_class_from,
-                        'local'        => $c->getPhpName(),
-                        'distant'      => $c->getRelatedTableName(),
-                        );
+                    $this->relations[$iFrom][$iTo] = new sfPropelImpersonatorOneToManyRelation($iFrom, $_class_from, $iFrom, $_class_to, $iTo, $c->getPhpName(), $c->getRelatedTableName(), array('from'=>$this->getParameters($iFrom), 'to'=>$this->getParameters($iTo)));
                   }
                 }
               }
@@ -297,11 +266,6 @@ class sfPropelObjectPeerImpersonator
     if ($con||!$this->connection)
     {
       $this->setConnection($con);
-    }
-
-    if (self::DEBUG)
-    {
-      echo '<b>QUERY</b> (may not be applicable):'.sfPropelCriteriaImpersonator::getSql($c);
     }
 
     if ($this->securityFieldCountFlag && ($_acceptable=($this->currentStartColumnForPropelObjects + $this->currentStartColumnForImpersonatedObjects - 1)) != ($_got = count($c->getSelectColumns())+count($c->getAsColumns())))
@@ -438,50 +402,18 @@ class sfPropelObjectPeerImpersonator
   {
     $this->initializeRelations();
 
-    // debug block
-    if (self::DEBUG && self::DEBUG_POPULATE)
-    {
-      $debugRelations = array();
-
-      foreach ($this->relations as $from => $fromData)
-      {
-        $fromClass = get_class($this->objects[$from]);
-
-        $debugRelations[$fromClass] = array();
-        foreach ($fromData as $to => $relationsData)
-        {
-          $toClass = get_class($this->objects[$to]);
-
-          $debugRelations[$fromClass][$toClass] = $relationsData;
-        }
-      }
-
-      echo '<script>console.dir('.json_encode(array('Propel Impersonator Debug'=>$debugRelations)).');</script>';
-      echo '<pre>';
-    }
-
     $result = array();
     $allObjects = array();
 
     // for each record....
     while ($resultset->next())
     {
-      if (self::DEBUG && self::DEBUG_POPULATE)
-      {
-        echo '-------------------- fetch a record --------------------'."\n";
-      }
-
       $rowObjects = array();
       $currentImpersonatedObjectsStartColumn = 0;
 
       // for each subcomponent we have to hydrate in each record....
       foreach ($this->objects as $index => $object)
       {
-        if (self::DEBUG && self::DEBUG_POPULATE)
-        {
-          echo '<b>'.get_class($object).'</b>'."\n";
-        }
-
         $rowObjects[$index] = clone $object;
 
         if (self::isPropelObject($object))
@@ -552,123 +484,22 @@ class sfPropelObjectPeerImpersonator
             // normal relation fetching (ie Propel BaseObjcet children)
             if (self::isPropelObject($this->objects[$index]))
             {
-              $linkedRelationsCounter = 0;
+              $_linkedRelationsCounter = 0;
 
               foreach ($this->getRelationsFor($index) as $relation)
               {
                 $currentObject = $rowObjects[$index];
 
-                switch ($relation['type'])
+                if ($relation->link($rowObjects, $index))
                 {
-                  /**
-                   * RELATION_REVERSE
-                   */
-                  case self::RELATION_REVERSE:
-                    if (self::DEBUG && self::DEBUG_POPULATE)
-                    {
-                      echo '  <u>REVERSE</u>: '.$relation['classFrom'].' <-- '.$relation['classTo'];
-                    }
-
-                    $foreignClass = $relation['classFrom'];
-                    $foreignObject = $rowObjects[$this->getIndexByClass($foreignClass)];
-                    $relatedBy = (null === ($_relatedBy=$this->getParameter($index, 'related_by')))?'':'RelatedBy'.sfInflector::camelize($_relatedBy);
-
-                    if ($isNewObject)
-                    {
-                      if (self::DEBUG && self::DEBUG_POPULATE)
-                      {
-                        echo ' (new)';
-                      }
-
-
-                      $currentObject->{'init'.$foreignClass.'s'.$relatedBy}();
-                    }
-
-                    $currentObject->{'add'.$foreignClass.$relatedBy}($foreignObject);
-                    $foreignObject->{'set'.$relation['classTo'].$relatedBy}($currentObject);
-
-                    $linkedRelationsCounter++;
-                    break;
-
-                  /**
-                   * RELATION_I18N
-                   */
-                  case self::RELATION_I18N:
-                    if (self::DEBUG && self::DEBUG_POPULATE)
-                    {
-                      echo '  <u>I18N</u>: '.$relation['classTo'].' <-- '.$relation['classFrom'];
-                    }
-
-                    if (null !== ($objectIndex = $this->getIndexByClass($relation['classTo'])))
-                    {
-                      if (self::DEBUG && self::DEBUG_POPULATE)
-                      {
-                        echo ' (exists)';
-                      }
-
-                      $object = $rowObjects[$objectIndex];
-                      $i18nObject = $rowObjects[$index];
-
-                      $i18nObject->{'set'.$relation['classTo']}($object);
-                      $object->{'set'.$relation['classTo'].'I18nForCulture'}($i18nObject, $this->getCulture());
-
-                      $linkedRelationsCounter++;
-                    }
-                    break;
-
-                  /**
-                   * RELATION_NORMAL
-                   */
-                  case self::RELATION_NORMAL:
-                    if (self::DEBUG && self::DEBUG_POPULATE)
-                    {
-                      echo '  <u>NORMAL</u>: '.$relation['classFrom'].' --> '.$relation['classTo'];
-                    }
-
-                    if (null !== ($classToIndex = $this->getIndexByClass($relation['classTo'])))
-                    {
-                      if (self::DEBUG && self::DEBUG_POPULATE)
-                      {
-                        echo ' (exists)';
-                      }
-                      $foreignObject = $rowObjects[$classToIndex];
-
-                      $relatedBy = (null === ($_relatedBy=$this->getParameter($classToIndex, 'related_by')))?'':'RelatedBy'.sfInflector::camelize($_relatedBy);
-                      // @todo: bug correction, this does not work if related_by is used this way, it tries to call setFieldRelatedByFieldId
-                      // instead of setClassNameRelatedByFieldId, and sometimes (depending on order) it uses the wrong Field, as second one
-                      // override first one in relations
-
-                      // local *---- foreign (local object has one foreign object)
-                      $rowObjects[$index]->{'set'.$relation['classTo'].$relatedBy}($foreignObject);
-
-                      // foreign ----* local (foreign object has many local objects)
-                      // we have to check if there are already other objects, or if this is the first.
-                      // @todo: find a way not to call initXxxXxxs() on every passes, but only on first addition for each object.
-
-                      $foreignObject->{'init'.$relation['classFrom'].'s'.$relatedBy}($rowObjects[$index]);
-                      $foreignObject->{'add'.$relation['classFrom'].$relatedBy}($rowObjects[$index]);
-
-                      $linkedRelationsCounter++;
-                    }
-                    break;
-
-                  case self::RELATION_SELF:
-                    throw new sfException('Self relations not yet implemented');
-                    break;
+                  $_linkedRelationsCounter++;
                 }
-
-
-                if (self::DEBUG && self::DEBUG_POPULATE)
-                {
-                  echo "\n";
-                }
-
               }
 
-              if (!$linkedRelationsCounter)
+              if (!$_linkedRelationsCounter)
               {
-                // this should not happen. An object which is not our main object has not been linked to any other
-                // fetched object.
+                // this should not happen if you did not make a mistake in your request. An object which is
+                // not our main object has not been linked to any other fetched object.
                 throw new sfException('Orphan object fetched of type '.get_class($rowObjects[$index]));
               }
             }
@@ -699,11 +530,6 @@ class sfPropelObjectPeerImpersonator
           $result[] =& $rowObjects[0];
         }
       }
-    }
-
-    if (self::DEBUG && self::DEBUG_POPULATE)
-    {
-      echo '</pre>';
     }
 
     return $result;
@@ -785,7 +611,7 @@ class sfPropelObjectPeerImpersonator
 
     if (null===$objectIndexOrName || !isset($this->objects[$objectIndexOrName]))
     {
-      throw new Exception('Tried to retrievea parameter for an unknown object name or index.');
+      throw new Exception('Tried to retrieve a parameter for an unknown object name or index.');
     }
 
     if (!isset($this->objectsParameters[$objectIndexOrName]) || !isset($this->objectsParameters[$objectIndexOrName][$parameterName]))
@@ -797,6 +623,36 @@ class sfPropelObjectPeerImpersonator
       return $this->objectsParameters[$objectIndexOrName][$parameterName];
     }
   }
+
+  /**
+   * Retrieve parameters for an object
+   *
+   * @param mixed  $objectIndexOrName
+   *
+   * @return mixed
+   */
+  public function getParameters($objectIndexOrName)
+  {
+    if (!is_numeric($objectIndexOrName))
+    {
+      $objectIndexOrName = $this->getIndexByClass($objectIndexOrName);
+    }
+
+    if (null===$objectIndexOrName || !isset($this->objects[$objectIndexOrName]))
+    {
+      throw new Exception('Tried to retrieve a parameter for an unknown object name or index.');
+    }
+
+    if (!isset($this->objectsParameters[$objectIndexOrName]))
+    {
+      return array();
+    }
+    else
+    {
+      return $this->objectsParameters[$objectIndexOrName];
+    }
+  }
+
 
   static public function isPropelObject($object)
   {
