@@ -142,11 +142,27 @@ class sfPropelObjectPeerImpersonator
    */
   public function addSelectColumns(Criteria $c)
   {
-    foreach($this->objects as $object)
+    foreach($this->objects as $index => $object)
     {
+      $peerClassName = get_class($object).'Peer';
+
       if (self::isPropelObject($object))
       {
-        call_user_func(array(get_class($object).'Peer', 'addSelectColumns'), $c);
+        if (null!==($alias=$this->getParameter($index, 'alias')))
+        {
+          $objectFields = call_user_func(array($peerClassName, 'getFieldNames'), BasePeer::TYPE_COLNAME);
+
+          $c->addAlias($alias, constant($peerClassName.'::TABLE_NAME'));
+
+          foreach ($objectFields as $objectField)
+          {
+            $c->addSelectColumn(call_user_func(array($peerClassName, 'alias'), $alias, $objectField));
+          }
+        }
+        else
+        {
+          call_user_func(array($peerClassName, 'addSelectColumns'), $c);
+        }
       }
       else
       {
@@ -254,7 +270,6 @@ class sfPropelObjectPeerImpersonator
         }
 
         /*
-
           @todo think about what we'll do with this.
 
           if the object was only made of null values, we consider it's inconsistent and forget it:
@@ -271,7 +286,6 @@ class sfPropelObjectPeerImpersonator
           will fetch it again from database.
 
           maybe this could be implemented with a minimal NULL object (ok i know it looks like Doctrine_Null)
-
         */
 
         // initialize our object directory
