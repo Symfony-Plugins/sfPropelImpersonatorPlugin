@@ -24,11 +24,17 @@
  *         can use this to populate a fake relation. for example, if a table materialize
  *         page views, you could return the same structure with sums, avgs and cie
  *         replacing the value field. Custom related class will be available through 
- *         $previousobject->customCamelizedFieldName (property, not method)
+ *         $previousobject->customCamelizedFieldName property, or if this field is
+ *         specified as custom_related_by=->setterMethod it will fetch relation using
+ *         the given method in previous object
  *   - custom_related_by_reverse:
  *         If you want to get a relation link back using custom_related_by, specify the
  *         underscored version of the field making link. sfPopi will call ->setCamelized(...)
  *         on the customized object.
+ *   - alias:
+ *         Provides a way to set an alias name for the table. This allows you to select a table
+ *         more than once using propel.
+ *
  *
  * KNOWN PROBLEMS:
  *  - don't use propel classes starting with lowercase or not being camelcased. Definately.
@@ -44,14 +50,6 @@
 
 class sfPropelObjectPeerImpersonator
 {
-  /**
-   * Relation type constants
-   */
-  const RELATION_NORMAL  = 1;
-  const RELATION_REVERSE = 2;
-  const RELATION_I18N    = 3;
-  const RELATION_SELF    = 4;
-
   /**
    * Custom SQL query, set by ->setQuery()
    */
@@ -356,7 +354,16 @@ class sfPropelObjectPeerImpersonator
             // user specified a relation, ignore propel introspection relations
             assert($index-1>=0);
 
-            $rowObjects[$index-1]->{'custom'.sfInflector::camelize($this->getParameter($index, 'custom_related_by'))} = $rowObjects[$index];
+            $method = $this->getParameter($index, 'custom_related_by');
+
+            if (substr($method, 0, 2)=='->')
+            {
+              $rowObjects[$index-1]->{substr($method, 2)}($rowObjects[$index]);
+            }
+            else
+            {
+              $rowObjects[$index-1]->{'custom'.$method} = $rowObjects[$index];
+            }
 
             if (strlen($_field=sfInflector::camelize($this->getParameter($index, 'custom_related_by_reverse'))))
             {
