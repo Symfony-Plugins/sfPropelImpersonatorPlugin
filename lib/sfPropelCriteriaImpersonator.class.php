@@ -157,6 +157,14 @@ class sfCreolePreparedStatementCommonImpersonator extends PreparedStatementCommo
 
   protected function escape($str)
   {
-    return mysql_real_escape_string($str, $this->conn->getResource());
+    switch (get_resource_type($resource=$this->conn->getResource()))
+    {
+      case 'mysql link':
+        return mysql_real_escape_string($str, $resource);
+      case 'pgsql link':
+        return pg_escape_string($str);
+      default:
+        throw new sfException(__CLASS__.' does not implements esacaping for '.get_resource_type($resource));
+    }
   }
 }
