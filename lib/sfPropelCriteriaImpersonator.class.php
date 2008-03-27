@@ -152,7 +152,14 @@ class sfCreolePreparedStatementCommonImpersonator extends PreparedStatementCommo
 {
   public function getSql()
   {
-    return $this->replaceParams();
+    $sql = $this->replaceParams();
+
+    if ($this->limit > 0 || $this->offset > 0)
+    {
+      $this->conn->applyLimit($sql, $this->offset, $this->limit);
+    }
+
+    return $sql;
   }
 
   protected function escape($str)
