@@ -164,11 +164,11 @@ class sfPropelObjectPeerImpersonator
 
     foreach ($this->objects as $iFrom => $oFrom)
     {
-      $_class_from = get_class($oFrom);
-      $databaseMap = $oFrom->getPeer()->getMapBuilder()->getDatabaseMap();
-
       if (null !== ($peer = $oFrom->getPeer()))
       {
+        $_class_from = get_class($oFrom);
+        $databaseMap = $oFrom->getPeer()->getMapBuilder()->getDatabaseMap();
+
         foreach ($databaseMap->getTable(constant($_class_from.'Peer::TABLE_NAME'))->getColumns() as $c)
         {
           if ($c->isForeignKey())
