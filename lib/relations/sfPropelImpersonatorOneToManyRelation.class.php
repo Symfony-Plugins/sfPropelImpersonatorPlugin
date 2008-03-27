@@ -3,7 +3,7 @@ class sfPropelImpersonatorOneToManyRelation extends sfPropelImpersonatorAbstract
 {
   public function link(array &$rowObjects, $isNewObject)
   {
-    if ($this->iTo)
+    if (null!==$this->iTo)
     {
       $foreignObject =& $rowObjects[$this->iTo];
 
@@ -24,7 +24,6 @@ class sfPropelImpersonatorOneToManyRelation extends sfPropelImpersonatorAbstract
 
       return true;
     }
-
     return false;
   }
 }

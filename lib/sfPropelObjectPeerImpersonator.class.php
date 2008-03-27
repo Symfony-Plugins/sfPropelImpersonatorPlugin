@@ -165,14 +165,21 @@ class sfPropelObjectPeerImpersonator
     foreach ($this->objects as $iFrom => $oFrom)
     {
       $_class_from = get_class($oFrom);
+      $databaseMap = $oFrom->getPeer()->getMapBuilder()->getDatabaseMap();
 
       if (null !== ($peer = $oFrom->getPeer()))
       {
-        foreach ($oFrom->getPeer()->getMapBuilder()->getDatabaseMap()->getTable(constant($_class_from.'Peer::TABLE_NAME'))->getColumns() as $c)
+        foreach ($databaseMap->getTable(constant($_class_from.'Peer::TABLE_NAME'))->getColumns() as $c)
         {
           if ($c->isForeignKey())
           {
-            $_class_to   = sfInflector::camelize($c->getRelatedTableName());
+            $relatedTableName = $c->getRelatedTableName();
+            if (!in_array($relatedTableName, array_keys($databaseMap->getTables())))
+            {
+              // this relation is not needed
+              continue;
+            }
+            $_class_to = $databaseMap->getTable($relatedTableName)->getPhpName();
 
             if ($_class_to != $_class_from)
             {
@@ -215,6 +222,146 @@ class sfPropelObjectPeerImpersonator
       }
     }
   }
+
+  /**
+   * Object population
+   */
+  public function populateObjects(ResultSet $resultset)
+  {
+    $this->initializeRelations();
+    $result = array();
+    $allObjects = array();
+
+    // for each record....
+    while ($resultset->next())
+    {
+      $rowObjects = array();
+      $currentImpersonatedObjectsStartColumn = 0;
+
+      // for each subcomponent we have to hydrate in each record....
+      foreach ($this->objects as $index => $object)
+      {
+        $rowObjects[$index] = clone $object;
+
+        if (self::isPropelObject($object))
+        {
+          $rowObjects[$index]->hydrate($resultset, $this->objectsStartColumns[$index]);
+        }
+        else
+        {
+          $rowObjects[$index]->hydrate($resultset, $this->currentStartColumnForPropelObjects + $currentImpersonatedObjectsStartColumn);
+          $currentImpersonatedObjectsStartColumn += $this->objectsStartColumns[$index];
+        }
+
+        /*
+
+          @todo think about what we'll do with this.
+
+          if the object was only made of null values, we consider it's inconsistent and forget it:
+
+          if (!$this->testConsistence($rowObjects[$index]->getPrimaryKey()))
+          {
+            unset($rowObjects[$index]);
+            continue;
+          }
+
+          for now, let's say we keep it
+
+          reason is: if we dont populate an empty propel object, propel will think we don't know it does not exists, and
+          will fetch it again from database.
+
+          maybe this could be implemented with a minimal NULL object (ok i know it looks like Doctrine_Null)
+
+        */
+
+        // initialize our object directory
+        if (!isset($allObjects[$index]))
+        {
+          $allObjects[$index] = array();
+        }
+
+        // check if object is not already referenced in allObjects directory
+        $isNewObject = true;
+
+        if (self::isPropelObject($this->objects[$index]))
+        {
+          foreach ($allObjects[$index] as $otherObject)
+          {
+            if ($otherObject->getPrimaryKey() === $rowObjects[$index]->getPrimaryKey())
+            {
+              $isNewObject = false;
+              $rowObjects[$index] = $otherObject;
+              break;
+            }
+          }
+        }
+
+        // reference it
+        if ($isNewObject)
+        {
+          $allObjects[$index][] = $rowObjects[$index];
+        }
+
+        // If we're not in our "main" object context but in a sub-object, we're going to
+        // fetch the available relations.
+        if ($index/*&&$isNewObject*/)
+        {
+          if (null===$this->getParameter($index, 'custom_related_by', null))
+          {
+            // normal relation fetching (ie Propel BaseObjcet children)
+            if (self::isPropelObject($this->objects[$index]))
+            {
+              $_linkedRelationsCounter = 0;
+
+              foreach ($this->getRelationsFor($index) as $relation)
+              {
+                $currentObject = $rowObjects[$index];
+
+                if ($relation->link($rowObjects, $index))
+                {
+                  $_linkedRelationsCounter++;
+                }
+              }
+
+              if (!$_linkedRelationsCounter)
+              {
+                // this should not happen if you did not make a mistake in your request. An object which is
+                // not our main object has not been linked to any other fetched object.
+                throw new sfException('Orphan object fetched of type '.get_class($rowObjects[$index]));
+              }
+            }
+            else
+            {
+              assert($index-1>=0);
+
+              $rowObjects[$index-1]->extra = $rowObjects[$index];
+            }
+          }
+          else
+          {
+            // user specified a relation, ignore propel introspection relations
+            assert($index-1>=0);
+
+            $rowObjects[$index-1]->{'custom'.sfInflector::camelize($this->getParameter($index, 'custom_related_by'))} = $rowObjects[$index];
+
+            if (strlen($_field=sfInflector::camelize($this->getParameter($index, 'custom_related_by_reverse'))))
+            {
+              $rowObjects[$index]->{'set'.$field}($rowObjects[$index-1]);
+            }
+          }
+        }
+
+        // link our main object
+        if (!$index && $isNewObject)
+        {
+          $result[] =& $rowObjects[0];
+        }
+      }
+    }
+
+    return $result;
+  }
+
 
   /**
    * Recursively parse parameters and prepare values in statement.
@@ -393,146 +540,6 @@ class sfPropelObjectPeerImpersonator
   public function getJoinForCulture($class, $idField)
   {
     return constant($class.'::'.$idField).' AND '.constant($class.'::CULTURE').'=\''.$this->getCulture().'\'';
-  }
-
-  /**
-   * Object population
-   */
-  public function populateObjects(ResultSet $resultset)
-  {
-    $this->initializeRelations();
-
-    $result = array();
-    $allObjects = array();
-
-    // for each record....
-    while ($resultset->next())
-    {
-      $rowObjects = array();
-      $currentImpersonatedObjectsStartColumn = 0;
-
-      // for each subcomponent we have to hydrate in each record....
-      foreach ($this->objects as $index => $object)
-      {
-        $rowObjects[$index] = clone $object;
-
-        if (self::isPropelObject($object))
-        {
-          $rowObjects[$index]->hydrate($resultset, $this->objectsStartColumns[$index]);
-        }
-        else
-        {
-          $rowObjects[$index]->hydrate($resultset, $this->currentStartColumnForPropelObjects + $currentImpersonatedObjectsStartColumn);
-          $currentImpersonatedObjectsStartColumn += $this->objectsStartColumns[$index];
-        }
-
-        /*
-
-          @todo think about what we'll do with this.
-
-          if the object was only made of null values, we consider it's inconsistent and forget it:
-
-          if (!$this->testConsistence($rowObjects[$index]->getPrimaryKey()))
-          {
-            unset($rowObjects[$index]);
-            continue;
-          }
-
-          for now, let's say we keep it
-
-          reason is: if we dont populate an empty propel object, propel will think we don't know it does not exists, and
-          will fetch it again from database.
-
-          maybe this could be implemented with a minimal NULL object (ok i know it looks like Doctrine_Null)
-
-        */
-
-        // initialize our object directory
-        if (!isset($allObjects[$index]))
-        {
-          $allObjects[$index] = array();
-        }
-
-        // check if object is not already referenced in allObjects directory
-        $isNewObject = true;
-
-        if (self::isPropelObject($this->objects[$index]))
-        {
-          foreach ($allObjects[$index] as $otherObject)
-          {
-            if ($otherObject->getPrimaryKey() === $rowObjects[$index]->getPrimaryKey())
-            {
-              $isNewObject = false;
-              $rowObjects[$index] = $otherObject;
-              break;
-            }
-          }
-        }
-
-        // reference it
-        if ($isNewObject)
-        {
-          $allObjects[$index][] = $rowObjects[$index];
-        }
-
-        // If we're not in our "main" object context but in a sub-object, we're going to
-        // fetch the available relations.
-        if ($index/*&&$isNewObject*/)
-        {
-          if (null===$this->getParameter($index, 'custom_related_by', null))
-          {
-            // normal relation fetching (ie Propel BaseObjcet children)
-            if (self::isPropelObject($this->objects[$index]))
-            {
-              $_linkedRelationsCounter = 0;
-
-              foreach ($this->getRelationsFor($index) as $relation)
-              {
-                $currentObject = $rowObjects[$index];
-
-                if ($relation->link($rowObjects, $index))
-                {
-                  $_linkedRelationsCounter++;
-                }
-              }
-
-              if (!$_linkedRelationsCounter)
-              {
-                // this should not happen if you did not make a mistake in your request. An object which is
-                // not our main object has not been linked to any other fetched object.
-                throw new sfException('Orphan object fetched of type '.get_class($rowObjects[$index]));
-              }
-            }
-            else
-            {
-              assert($index-1>=0);
-
-              $rowObjects[$index-1]->extra = $rowObjects[$index];
-            }
-          }
-          else
-          {
-            // user specified a relation, ignore propel introspection relations
-            assert($index-1>=0);
-
-            $rowObjects[$index-1]->{'custom'.sfInflector::camelize($this->getParameter($index, 'custom_related_by'))} = $rowObjects[$index];
-
-            if (strlen($_field=sfInflector::camelize($this->getParameter($index, 'custom_related_by_reverse'))))
-            {
-              $rowObjects[$index]->{'set'.$field}($rowObjects[$index-1]);
-            }
-          }
-        }
-
-        // link our main object
-        if (!$index && $isNewObject)
-        {
-          $result[] =& $rowObjects[0];
-        }
-      }
-    }
-
-    return $result;
   }
 
   public function disableSecurityFieldCountFlag()
