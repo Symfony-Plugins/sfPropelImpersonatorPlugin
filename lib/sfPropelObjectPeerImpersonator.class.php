@@ -5,10 +5,9 @@
  *
  * A class that imitates in some way Peer static classes, for doing custom queries.
  * This class is not static, but the ->doSelect should return an array of
- * sfPropelObjectImpersonator which will implements same methods as usual propel's
- * BaseObject subclasses (in the limit of what was actually implemented for our
- * admin generation/object helper needs, or any other class provided at construction
- * time.
+ * sfPropelObject which implements same methods as usual propel's BaseObject subclasses
+ * (in the limit of what was actually implemented for our  admin generation/object helper
+ * needs, or any other class provided at construction time.
  *
  * Constructor takes mixed arguments, either strings or arrays, and arrays can be
  * containing more arrays in the same form, only matters is the order. Thoose arguments
@@ -765,7 +764,7 @@ class sfPropelObjectPeerImpersonator
   {
     if (count($fields))
     {
-      $this->addObject(new sfPropelObjectImpersonator($fields));
+      $this->addObject(new sfPropelObject($fields));
       $fields = array();
       return true;
     }
