@@ -539,7 +539,7 @@ class sfPropelObjectPeerImpersonator
 
   public function setCulture($culture)
   {
-    $this->culture = mysql_real_escape_string($culture);
+    $this->culture = sfPropelImpersonatorEscaper::escape($culture);
   }
 
   public function getCulture()
@@ -559,7 +559,22 @@ class sfPropelObjectPeerImpersonator
 */
   public function getJoinForCulture($class, $idField)
   {
-    return constant($class.'::'.$idField).' AND '.constant($class.'::CULTURE').'=\''.$this->getCulture().'\'';
+    static $cultureWheres = array();
+    $culture = $this->getCulture();
+    
+    if (!isset($cultureWheres[$culture]))
+    {    
+      if (false===strpos($culture, '_'))
+      {
+        $cultureWheres[$culture] = constant($class.'::CULTURE').' '.Criteria::LIKE.' \''.$culture.'_%\'';
+      }
+      else
+      {
+        $cultureWheres[$culture] = constant($class.'::CULTURE').' '.'=\''.$this->getCulture().'\'';
+      }
+    }
+    
+    return constant($class.'::'.$idField).' AND '.$cultureWheres[$culture];
   }
 
   public function disableSecurityFieldCountFlag()
