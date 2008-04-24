@@ -537,11 +537,21 @@ class sfPropelObjectPeerImpersonator
     }
   }
 
+  /**
+   * Override current culture to $culture for I18n joins
+   *
+   * @param string $culture
+   */
   public function setCulture($culture)
   {
     $this->culture = sfPropelImpersonatorEscaper::escape($culture);
   }
 
+  /**
+   * Retrieve current culture
+   *
+   * @return string
+   */
   public function getCulture()
   {
     if (null === $this->culture)
@@ -551,37 +561,46 @@ class sfPropelObjectPeerImpersonator
 
     return $this->culture;
   }
-/*
-  public function getJoinExtension($field, $field2, $linkOperator, $comparisonOperator)
-  {
-    return ' '.$linkOperator.' ('.$field.' '.$comparisonOperator.' '.$field2.') ';
-  }
-*/
-  public function getJoinForCulture($class, $idField)
+
+  /**
+   * Retrieves Criteria::addJoin second parameter to add a culture join.
+   *
+   * @param string $class             i18nPeer class name
+   * @param string $idField           id field in i18n class
+   * @param string $cultureFieldName  culture field name in i18n class
+   */
+  public function getJoinForCulture($class, $idField, $cultureFieldName = 'CULTURE')
   {
     static $cultureWheres = array();
     $culture = $this->getCulture();
-    
-    if (!isset($cultureWheres[$culture]))
-    {    
+    $md5 = md5($class.'-'.$idField.'-'.$cultureFieldName);
+
+    if (!isset($cultureWheres[$md5]))
+    {
       if (false===strpos($culture, '_'))
       {
-        $cultureWheres[$culture] = constant($class.'::CULTURE').' '.Criteria::LIKE.' \''.$culture.'_%\'';
+        $cultureWheres[$md5] = constant($class.'::'.$cultureFieldName).' '.Criteria::LIKE.' \''.$culture.'_%\'';
       }
       else
       {
-        $cultureWheres[$culture] = constant($class.'::CULTURE').' '.'=\''.$this->getCulture().'\'';
+        $cultureWheres[$md5] = constant($class.'::'.$cultureFieldName).' = \''.$this->getCulture().'\'';
       }
     }
-    
-    return constant($class.'::'.$idField).' AND '.$cultureWheres[$culture];
+
+    return constant($class.'::'.$idField).' AND '.$cultureWheres[$md5];
   }
 
+  /**
+   * Disable the field selected VS fields populated count challenge.
+   */
   public function disableSecurityFieldCountFlag()
   {
     $this->securityFieldCountFlag = false;
   }
 
+  /**
+   * Enable the field selected VS fields populated count challenge (default).
+   */
   public function enableSecurityFieldCountFlag()
   {
     $this->securityFieldCountFlag = true;
