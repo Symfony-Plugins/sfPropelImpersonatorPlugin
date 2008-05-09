@@ -24,14 +24,14 @@ The full documentation is available on [http://www.dakrazy.net/document/sf_prope
 To check it out:
 
 {{{
-svn co http://svn.symfony-project.com/plugins/sfPropelImpersonatorPlugin/tags/0.1alpha
+svn co http://svn.symfony-project.com/plugins/sfPropelImpersonatorPlugin/branches/1.0
 }}}
 
 To use it as an external:
 {{{
 svn propedit svn:externals plugins
 
-sfPropelImpersonatorPlugin http://svn.symfony-project.com/plugins/sfPropelImpersonatorPlugin/tags/0.1alpha
+sfPropelImpersonatorPlugin http://svn.symfony-project.com/plugins/sfPropelImpersonatorPlugin/branches/1.0
 }}}
 
 == Contents ==
