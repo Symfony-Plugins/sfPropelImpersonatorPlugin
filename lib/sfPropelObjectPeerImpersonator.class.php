@@ -430,17 +430,38 @@ class sfPropelObjectPeerImpersonator
    */
   public function doSelect(Criteria $c, $con=null)
   {
-    if ($con||!$this->connection)
-    {
-      $this->setConnection($con);
-    }
-
     if ($this->securityFieldCountFlag && ($_acceptable=($this->currentStartColumnForPropelObjects + $this->currentStartColumnForImpersonatedObjects - 1)) != ($_got = count($c->getSelectColumns())+count($c->getAsColumns())))
     {
       throw new sfException('Criteria selects '.$_got.' fields while the Holy sfPropelImpersonator waits for '.$_acceptable.' fields to populate objects. Exactly. Not more, not less. So '.$_acceptable.' will be the field count your Criteria will ask for. You won\'t give it '.($_acceptable-1).', neither '.($_acceptable+1).', but '.$_acceptable.'.');
     }
 
-    return $this->populateObjects(BasePeer::doSelect($c, $con));
+    return $this->populateObjects($this->doSelectRS($c, $con));
+  }
+
+  /**
+   * Impersonates doSelectRS, to call behaviours callables
+   */
+  public function doSelectRS(Criteria $criteria, $con = null)
+  {
+    $basePeer = 'Base'.get_class($this->objects[0]).'Peer';
+
+    foreach (sfMixer::getCallables($basePeer.':doSelectRS:doSelectRS') as $callable)
+    {
+      call_user_func($callable, $basePeer, $criteria, $con);
+    }
+
+    if ($con||!$this->connection)
+    {
+      $this->setConnection($con);
+    }
+
+    if (!$criteria->getSelectColumns())
+    {
+      $criteria = clone $criteria;
+      $this->addSelectColumns($criteria);
+    }
+
+    return BasePeer::doSelect($criteria, $con);
   }
 
   /**
@@ -607,54 +628,6 @@ class sfPropelObjectPeerImpersonator
   }
 
   /**
-   * Checks whether a primary key is consistent or not. Used to know if an object retrieved via a
-   * left/right join (or equivalent) was null or not.
-   *
-   * @param mixed $key
-   *
-   * @return boolean
-   */
-  protected function testConsistence($key)
-  {
-    $isConsistent = true;
-
-    if (is_array($key))
-    {
-      foreach ($key as $key_part)
-      {
-        $isConsistent = $isConsistent && $this->testConsistence($key_part);
-      }
-    }
-    elseif ($key === null)
-    {
-      $isConsistent = false;
-    }
-
-    return $isConsistent;
-  }
-
-  protected function getRelationsFor($index)
-  {
-    return isset($this->relations[$index]) ? $this->relations[$index] : array();
-  }
-
-  /**
-   * Merge a new parameters set with existing one for object indexed by $objectIndex
-   *
-   * @param integer $objectIndex
-   * @param array   $parameters
-   */
-  protected function setParameters($objectIndex, array $parameters)
-  {
-    if (!isset($this->objectsParameters[$objectIndex]))
-    {
-      $this->objectsParameters[$objectIndex] = array();
-    }
-
-    $this->objectsParameters[$objectIndex] = array_merge($this->objectsParameters[$objectIndex], $parameters);
-  }
-
-  /**
    * Retrieve a parameter for an object
    *
    * @param mixed  $objectIndexOrName
@@ -721,6 +694,54 @@ class sfPropelObjectPeerImpersonator
   }
 
   /**
+   * Checks whether a primary key is consistent or not. Used to know if an object retrieved via a
+   * left/right join (or equivalent) was null or not.
+   *
+   * @param mixed $key
+   *
+   * @return boolean
+   */
+  protected function testConsistence($key)
+  {
+    $isConsistent = true;
+
+    if (is_array($key))
+    {
+      foreach ($key as $key_part)
+      {
+        $isConsistent = $isConsistent && $this->testConsistence($key_part);
+      }
+    }
+    elseif ($key === null)
+    {
+      $isConsistent = false;
+    }
+
+    return $isConsistent;
+  }
+
+  protected function getRelationsFor($index)
+  {
+    return isset($this->relations[$index]) ? $this->relations[$index] : array();
+  }
+
+  /**
+   * Merge a new parameters set with existing one for object indexed by $objectIndex
+   *
+   * @param integer $objectIndex
+   * @param array   $parameters
+   */
+  protected function setParameters($objectIndex, array $parameters)
+  {
+    if (!isset($this->objectsParameters[$objectIndex]))
+    {
+      $this->objectsParameters[$objectIndex] = array();
+    }
+
+    $this->objectsParameters[$objectIndex] = array_merge($this->objectsParameters[$objectIndex], $parameters);
+  }
+
+  /**
    * Adds an object instance to the current objects array
    */
   protected function addObject($instance, $parameters=null)
@@ -747,7 +768,6 @@ class sfPropelObjectPeerImpersonator
       $this->setParameters($index, $parameters);
     }
   }
-
 
   protected function addObjectByClassName($className)
   {
