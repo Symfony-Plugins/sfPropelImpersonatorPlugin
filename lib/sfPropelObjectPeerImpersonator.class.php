@@ -444,8 +444,8 @@ class sfPropelObjectPeerImpersonator
   public function doSelectRS(Criteria $criteria, $con = null)
   {
     $basePeer = 'Base'.get_class($this->objects[0]).'Peer';
-
-    foreach (sfMixer::getCallables($basePeer.':doSelectRS:doSelectRS') as $callable)
+    
+    foreach (sfMixer::getCallables($basePeer.':addDoSelectRS:addDoSelectRS') as $callable)
     {
       call_user_func($callable, $basePeer, $criteria, $con);
     }
