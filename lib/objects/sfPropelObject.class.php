@@ -20,7 +20,14 @@ class sfPropelObject
     {
       if (is_array($column) && count($column)>=2)
       {
-        $columns[$index][2] = trim(strtolower(preg_replace('/[^a-z]/i', '_', $column[1])), '_');
+        if (!isset($column[2]))
+        {
+          $columns[$index][2] = trim(strtolower(preg_replace('/[^a-z]+/i', '_', $column[1])), '_');
+        }
+        else
+        {
+          $columns[$index][2] = trim(strtolower(preg_replace('/[^a-z_]+/i', '_', $column[2])), '_');
+        }
       }
       else
       {
