@@ -22,7 +22,7 @@
  *         when using custom sql that returns the same fields as a propel object, you
  *         can use this to populate a fake relation. for example, if a table materialize
  *         page views, you could return the same structure with sums, avgs and cie
- *         replacing the value field. Custom related class will be available through 
+ *         replacing the value field. Custom related class will be available through
  *         $previousobject->customCamelizedFieldName property, or if this field is
  *         specified as custom_related_by=->setterMethod it will fetch relation using
  *         the given method in previous object
@@ -36,9 +36,6 @@
  *
  *
  * KNOWN PROBLEMS:
- *  - don't use propel classes starting with lowercase or not being camelcased. Definately.
- *    I don't think we can find a workaround for this, propel does not give enough informations
- *    in introspection classes
  *  - everything flagged as @todo in this file.
  *
  * @package sfPropelImpersonatorPlugin
@@ -444,7 +441,7 @@ class sfPropelObjectPeerImpersonator
   public function doSelectRS(Criteria $criteria, $con = null)
   {
     $basePeer = 'Base'.get_class($this->objects[0]).'Peer';
-    
+
     foreach (sfMixer::getCallables($basePeer.':addDoSelectRS:addDoSelectRS') as $callable)
     {
       call_user_func($callable, $basePeer, $criteria, $con);
