@@ -587,7 +587,7 @@ class sfPropelObjectPeerImpersonator
    * @param string $idField           id field in i18n class
    * @param string $cultureFieldName  culture field name in i18n class
    */
-  public function getJoinForCulture($class, $idField, $cultureFieldName = 'CULTURE')
+  public function getJoinForCulture($class, $idField = 'ID', $cultureFieldName = 'CULTURE')
   {
     static $cultureWheres = array();
     $culture = $this->getCulture();
