@@ -100,6 +100,18 @@ class sfPropelObject
     return $this->columns;
   }
 
+  public function toArray()
+  {
+    $result = array();
+
+    foreach ($this->columns as $column)
+    {
+      $result[$column[2]] = $this->{$column[2]};
+    }
+
+    return $result;
+  }
+
   public function __toString()
   {
     return $this->name;
