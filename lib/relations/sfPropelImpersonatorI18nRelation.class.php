@@ -18,6 +18,7 @@ class sfPropelImpersonatorI18nRelation extends sfPropelImpersonatorAbstractRelat
 
       $i18nObject->{'set'.$this->to}($object);
       $object->{'set'.$this->to.'I18nForCulture'}($i18nObject, $this->culture);
+      $object->setCulture($this->culture);
 
       return true;
     }
