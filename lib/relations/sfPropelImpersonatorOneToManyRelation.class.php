@@ -1,6 +1,8 @@
 <?php
 class sfPropelImpersonatorOneToManyRelation extends sfPropelImpersonatorAbstractRelation
 {
+  private $foreignObjectInitialized = array();
+
   public function link(array &$rowObjects, $isNewObject)
   {
     if (null!==$this->iTo)
@@ -17,13 +19,30 @@ class sfPropelImpersonatorOneToManyRelation extends sfPropelImpersonatorAbstract
 
       // foreign ----* local (foreign object has many local objects)
       // we have to check if there are already other objects, or if this is the first.
-      // @todo: find a way not to call initXxxXxxs() on every passes, but only on first addition for each object.
 
-      $foreignObject->{'init'.$this->from.'s'.$relatedBy}($rowObjects[$this->index]);
+      if ($this->foreignObjectInitialized($foreignObject))
+      {
+        $foreignObject->{'init'.$this->from.'s'.$relatedBy}($rowObjects[$this->index]);
+      }
       $foreignObject->{'add'.$this->from.$relatedBy}($rowObjects[$this->index]);
 
       return true;
     }
     return false;
+  }
+
+  protected function foreignObjectInitialized($object)
+  {
+    $objectHash = spl_object_hash($object);
+
+    if (isset($this->foreignObjectInitialized[$objectHash]))
+    {
+      return false;
+    }
+    else
+    {
+      $this->foreignObjectInitialized[$objectHash] = true;
+      return true;
+    }
   }
 }
