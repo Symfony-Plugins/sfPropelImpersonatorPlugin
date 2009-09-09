@@ -1,7 +1,7 @@
 <?php
 class sfPropelImpersonatorOneToManyRelation extends sfPropelImpersonatorAbstractRelation
 {
-  private $foreignObjectInitialized = array();
+  protected $foreignObjectInitialized = array();
 
   public function link(array &$rowObjects, $isNewObject)
   {
